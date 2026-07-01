@@ -10,6 +10,13 @@ const TILE_SUBDOMAINS = 'abcd'
 const DEFAULT_CENTER: [number, number] = [37.5665, 126.978]
 const DEFAULT_ZOOM = 13
 
+const customIcon = L.icon({
+  iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png',
+  iconSize: [32, 32],
+  iconAnchor: [16, 32],
+  popupAnchor: [0, -32],
+})
+
 interface MapViewProps {
   center?: LatLng
   zoom?: number
@@ -76,7 +83,7 @@ export default function MapView({
 
     if (!marker) return
 
-    const mk = L.marker([marker.lat, marker.lng]).addTo(mapRef.current)
+    const mk = L.marker([marker.lat, marker.lng], { icon: customIcon }).addTo(mapRef.current)
     markerRef.current = mk
     mapRef.current.setView([marker.lat, marker.lng])
   }, [marker?.lat, marker?.lng])

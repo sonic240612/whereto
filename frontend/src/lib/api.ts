@@ -1,11 +1,10 @@
 import type { Visit } from '../types'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+const STORAGE_KEY = 'whereto_visits'
 
 export async function fetchVisits(): Promise<Visit[]> {
-  const res = await fetch(`${API_BASE}/api/visits`)
-  if (!res.ok) throw new Error('Failed to fetch visits')
-  return res.json()
+  const data = localStorage.getItem(STORAGE_KEY)
+  return data ? JSON.parse(data) : []
 }
 
 export async function createVisit(data: {
@@ -16,16 +15,25 @@ export async function createVisit(data: {
   lat: number
   lng: number
 }): Promise<Visit> {
-  const res = await fetch(`${API_BASE}/api/visits`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  })
-  if (!res.ok) throw new Error('Failed to create visit')
-  return res.json()
+  const visits = await fetchVisits()
+  const newVisit: Visit = {
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+    name: data.name ?? null,
+    lat: data.lat,
+    lng: data.lng,
+    address: data.address,
+    rating: data.rating,
+    note: data.note ?? null,
+    photoUrl: null,
+    photoId: null,
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify([...visits, newVisit]))
+  return newVisit
 }
 
 export async function deleteVisit(id: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/visits/${id}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error('Failed to delete visit')
+  const visits = await fetchVisits()
+  const filtered = visits.filter((v) => v.id !== id)
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered))
 }
