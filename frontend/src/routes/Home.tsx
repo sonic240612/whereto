@@ -6,7 +6,7 @@ import MapView from '../components/MapView'
 import FabButton from '../components/FabButton'
 import RangeSelector from '../components/RangeSelector'
 import useGeolocation from '../hooks/useGeolocation'
-import type { RectBounds } from '../types'
+import type { LatLng, RectBounds } from '../types'
 
 const DEFAULT_ZOOM = 13
 
@@ -15,10 +15,17 @@ export default function Home() {
   const { location: userLocation, error: geoError } = useGeolocation()
   const [selecting, setSelecting] = useState(false)
   const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM)
+  const [mapCenter, setMapCenter] = useState<LatLng | null>(null)
 
   const handleMapLoad = useCallback((map: L.Map) => {
+    const c = map.getCenter()
     setMapZoom(map.getZoom())
+    setMapCenter({ lat: c.lat, lng: c.lng })
     map.on('zoomend', () => setMapZoom(map.getZoom()))
+    map.on('moveend', () => {
+      const c2 = map.getCenter()
+      setMapCenter({ lat: c2.lat, lng: c2.lng })
+    })
   }, [])
 
   const handlePick = useCallback(() => {
@@ -100,7 +107,7 @@ export default function Home() {
 
       {selecting && userLocation && (
         <RangeSelector
-          userLocation={userLocation}
+          userLocation={mapCenter ?? userLocation}
           zoom={mapZoom}
           onConfirm={handleConfirm}
           onCancel={handleCancel}
