@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { Loader2, RefreshCw, MapPin } from 'lucide-react'
+import { Loader2, RefreshCw, MapPin, Home } from 'lucide-react'
 import MapView from '../components/MapView'
 import ResultPin from '../components/ResultPin'
 import NavLinks from '../components/NavLinks'
@@ -181,6 +181,14 @@ export default function Result() {
               방문 기록하기
             </button>
           </div>
+
+          <a
+            href="/"
+            className="flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-semibold text-text-light hover:text-text bg-white/50 hover:bg-white/80 border border-border/50 transition-all active:scale-[0.97]"
+          >
+            <Home size={15} />
+            처음으로
+          </a>
         </div>
       </div>
 
