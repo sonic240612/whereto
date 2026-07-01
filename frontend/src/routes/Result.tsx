@@ -133,6 +133,7 @@ export default function Result() {
         <MapView
           center={loading || !latlng ? undefined : latlng}
           marker={latlng}
+          bounds={bounds}
           className="absolute inset-0"
         />
 
