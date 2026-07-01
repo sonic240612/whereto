@@ -26,9 +26,9 @@ export default function Home() {
         minLng: String(bounds.minLng),
         maxLng: String(bounds.maxLng),
       })
-      navigate(`/result?${p}`, { replace: true })
+      window.location.href = `/result?${p}`
     },
-    [navigate],
+    [],
   )
 
   const handleCancel = useCallback(() => {
@@ -43,7 +43,6 @@ export default function Home() {
           className="absolute inset-0"
         />
 
-        {/* Top: branding */}
         <div className="relative z-10 p-5 pb-0">
           <div className="inline-flex items-center gap-2.5 glass rounded-2xl px-5 py-2.5 shadow-lg">
             <Compass size={22} className="text-primary" />
@@ -58,7 +57,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Bottom: controls */}
         <div className="relative z-10 mt-auto p-5 pb-8 space-y-3">
           {geoError && (
             <div className="glass-strong rounded-2xl p-4 shadow-lg mb-3">

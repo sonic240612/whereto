@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
-import { Loader2, RefreshCw } from 'lucide-react'
+import { Loader2, RefreshCw, MapPin } from 'lucide-react'
 import MapView from '../components/MapView'
 import ResultPin from '../components/ResultPin'
 import NavLinks from '../components/NavLinks'
@@ -10,7 +9,8 @@ import { generateRandomCoord } from '../lib/random'
 import { createVisit } from '../lib/api'
 import type { LatLng, RectBounds } from '../types'
 
-function parseBounds(sp: URLSearchParams): RectBounds | null {
+function parseBounds(): RectBounds | null {
+  const sp = new URLSearchParams(window.location.search)
   const minLat = parseFloat(sp.get('minLat') ?? '')
   const maxLat = parseFloat(sp.get('maxLat') ?? '')
   const minLng = parseFloat(sp.get('minLng') ?? '')
@@ -20,9 +20,7 @@ function parseBounds(sp: URLSearchParams): RectBounds | null {
 }
 
 export default function Result() {
-  const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const bounds = useMemo(() => parseBounds(searchParams), [searchParams])
+  const bounds = useMemo(() => parseBounds(), [])
 
   const [latlng, setLatlng] = useState<LatLng | null>(null)
   const [address, setAddress] = useState<string | null>(null)
@@ -47,18 +45,19 @@ export default function Result() {
 
   useEffect(() => {
     if (!bounds) {
-      navigate('/', { replace: true })
+      window.location.href = '/'
       return
     }
 
-    const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+    const entries = performance.getEntriesByType('navigation')
+    const nav = entries[0] as PerformanceNavigationTiming | undefined
     if (nav?.type === 'reload') {
-      navigate('/', { replace: true })
+      window.location.href = '/'
       return
     }
 
     doFetch(bounds)
-  }, [bounds, doFetch, navigate])
+  }, [bounds, doFetch])
 
   const handleRedo = useCallback(() => {
     if (!bounds || redoPromiseRef.current) return
@@ -96,7 +95,24 @@ export default function Result() {
   )
 
   if (!bounds) {
-    return null
+    return (
+      <div className="flex flex-col items-center justify-center min-h-dvh p-8 text-center bg-bg">
+        <MapPin size={48} className="text-border mb-6" />
+        <h2 className="text-xl font-bold text-text mb-2">잘못된 접근</h2>
+        <p className="text-sm text-text-light mb-6 max-w-xs">
+          탐색 범위 정보가 없습니다.
+        </p>
+        <a
+          href="/"
+          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white transition-all"
+          style={{
+            background: 'linear-gradient(135deg, #FF6B6B 0%, #ee5a24 100%)',
+          }}
+        >
+          처음으로 돌아가기
+        </a>
+      </div>
+    )
   }
 
   return (
