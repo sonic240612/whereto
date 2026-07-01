@@ -12,6 +12,7 @@ const DEFAULT_ZOOM = 13
 
 interface MapViewProps {
   center?: LatLng
+  zoom?: number
   bounds?: RectBounds | null
   marker?: LatLng | null
   onBoundsChange?: (bounds: RectBounds) => void
@@ -22,6 +23,7 @@ interface MapViewProps {
 
 export default function MapView({
   center,
+  zoom,
   bounds,
   marker,
   onBoundsChange,
@@ -41,7 +43,7 @@ export default function MapView({
 
     const map = L.map(containerRef.current, {
       center: [center?.lat ?? DEFAULT_CENTER[0], center?.lng ?? DEFAULT_CENTER[1]],
-      zoom: DEFAULT_ZOOM,
+      zoom: zoom ?? DEFAULT_ZOOM,
       zoomControl: true,
       zoomSnap: 0.5,
       attributionControl: false,

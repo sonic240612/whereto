@@ -1,16 +1,25 @@
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Compass, ArrowRight, Image } from 'lucide-react'
+import L from 'leaflet'
 import MapView from '../components/MapView'
 import FabButton from '../components/FabButton'
 import RangeSelector from '../components/RangeSelector'
 import useGeolocation from '../hooks/useGeolocation'
 import type { RectBounds } from '../types'
 
+const DEFAULT_ZOOM = 13
+
 export default function Home() {
   const navigate = useNavigate()
   const { location: userLocation, error: geoError } = useGeolocation()
   const [selecting, setSelecting] = useState(false)
+  const [mapZoom, setMapZoom] = useState(DEFAULT_ZOOM)
+
+  const handleMapLoad = useCallback((map: L.Map) => {
+    setMapZoom(map.getZoom())
+    map.on('zoomend', () => setMapZoom(map.getZoom()))
+  }, [])
 
   const handlePick = useCallback(() => {
     if (!userLocation) return
@@ -40,6 +49,7 @@ export default function Home() {
       <div className="relative flex flex-col min-h-dvh">
         <MapView
           center={userLocation ?? undefined}
+          onMapLoad={handleMapLoad}
           className="absolute inset-0"
         />
 
@@ -91,6 +101,7 @@ export default function Home() {
       {selecting && userLocation && (
         <RangeSelector
           userLocation={userLocation}
+          zoom={mapZoom}
           onConfirm={handleConfirm}
           onCancel={handleCancel}
         />

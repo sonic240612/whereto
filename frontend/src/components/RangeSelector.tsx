@@ -5,12 +5,14 @@ import type { LatLng, RectBounds } from '../types'
 
 interface RangeSelectorProps {
   userLocation: LatLng | null
+  zoom?: number
   onConfirm: (bounds: RectBounds) => void
   onCancel: () => void
 }
 
 export default function RangeSelector({
   userLocation,
+  zoom,
   onConfirm,
   onCancel,
 }: RangeSelectorProps) {
@@ -43,6 +45,7 @@ export default function RangeSelector({
 
       <MapView
         center={userLocation ?? undefined}
+        zoom={zoom}
         selecting={true}
         onBoundsChange={handleBoundsChange}
         className="flex-1"
