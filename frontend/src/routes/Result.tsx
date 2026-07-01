@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Loader2, RefreshCw } from 'lucide-react'
 import MapView from '../components/MapView'
 import ResultPin from '../components/ResultPin'
@@ -10,14 +10,19 @@ import { generateRandomCoord } from '../lib/random'
 import { createVisit } from '../lib/api'
 import type { LatLng, RectBounds } from '../types'
 
-interface ResultState {
-  bounds: RectBounds
+function parseBounds(sp: URLSearchParams): RectBounds | null {
+  const minLat = parseFloat(sp.get('minLat') ?? '')
+  const maxLat = parseFloat(sp.get('maxLat') ?? '')
+  const minLng = parseFloat(sp.get('minLng') ?? '')
+  const maxLng = parseFloat(sp.get('maxLng') ?? '')
+  if (isNaN(minLat) || isNaN(maxLat) || isNaN(minLng) || isNaN(maxLng)) return null
+  return { minLat, maxLat, minLng, maxLng }
 }
 
 export default function Result() {
   const navigate = useNavigate()
-  const location = useLocation()
-  const state = location.state as ResultState | null
+  const [searchParams] = useSearchParams()
+  const bounds = useMemo(() => parseBounds(searchParams), [searchParams])
 
   const [latlng, setLatlng] = useState<LatLng | null>(null)
   const [address, setAddress] = useState<string | null>(null)
@@ -27,21 +32,21 @@ export default function Result() {
   const [showForm, setShowForm] = useState(false)
   const redoPromiseRef = useRef<Promise<void> | null>(null)
 
-  const doFetch = useCallback(async (bounds: RectBounds) => {
+  const doFetch = useCallback(async (b: RectBounds) => {
     setLatlng(null)
     setAddress(null)
     setVisible(false)
     setLoading(true)
     setShowForm(false)
 
-    const result = await generateRandomCoord(bounds, reverseGeocode)
+    const result = await generateRandomCoord(b, reverseGeocode)
     setLatlng({ lat: result.lat, lng: result.lng })
     setAddress(result.address)
     setLoading(false)
   }, [])
 
   useEffect(() => {
-    if (!state?.bounds) {
+    if (!bounds) {
       navigate('/', { replace: true })
       return
     }
@@ -52,15 +57,15 @@ export default function Result() {
       return
     }
 
-    doFetch(state.bounds)
-  }, [state?.bounds, doFetch, navigate])
+    doFetch(bounds)
+  }, [bounds, doFetch, navigate])
 
   const handleRedo = useCallback(() => {
-    if (!state?.bounds || redoPromiseRef.current) return
+    if (!bounds || redoPromiseRef.current) return
 
     if (!redoLoading) {
       setRedoLoading(true)
-      const p = generateRandomCoord(state.bounds, reverseGeocode).then((result) => {
+      const p = generateRandomCoord(bounds, reverseGeocode).then((result) => {
         setLatlng({ lat: result.lat, lng: result.lng })
         setAddress(result.address)
         setLoading(false)
@@ -75,7 +80,7 @@ export default function Result() {
     setVisible(false)
     setLoading(true)
     setShowForm(false)
-  }, [state?.bounds, redoLoading])
+  }, [bounds, redoLoading])
 
   const handleSave = useCallback(
     async (data: { name: string; address: string; rating: number; note: string }) => {
@@ -89,6 +94,10 @@ export default function Result() {
     },
     [latlng],
   )
+
+  if (!bounds) {
+    return null
+  }
 
   return (
     <div className="relative min-h-dvh flex flex-col">

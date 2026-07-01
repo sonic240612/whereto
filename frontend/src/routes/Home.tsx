@@ -20,7 +20,13 @@ export default function Home() {
   const handleConfirm = useCallback(
     (bounds: RectBounds) => {
       setSelecting(false)
-      navigate('/result', { state: { bounds } })
+      const p = new URLSearchParams({
+        minLat: String(bounds.minLat),
+        maxLat: String(bounds.maxLat),
+        minLng: String(bounds.minLng),
+        maxLng: String(bounds.maxLng),
+      })
+      navigate(`/result?${p}`, { replace: true })
     },
     [navigate],
   )
