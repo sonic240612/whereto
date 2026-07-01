@@ -18,7 +18,6 @@ export default function Result() {
   const navigate = useNavigate()
   const location = useLocation()
   const state = location.state as ResultState | null
-  const handledRef = useRef(false)
 
   const [latlng, setLatlng] = useState<LatLng | null>(null)
   const [address, setAddress] = useState<string | null>(null)
@@ -42,13 +41,10 @@ export default function Result() {
   }, [])
 
   useEffect(() => {
-    if (handledRef.current) return
-    handledRef.current = true
+    const navIntent = sessionStorage.getItem('wt_nav')
+    sessionStorage.removeItem('wt_nav')
 
-    const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
-    const isReload = nav?.type === 'reload'
-
-    if (!state?.bounds || isReload) {
+    if (!state?.bounds || !navIntent) {
       navigate('/', { replace: true })
       return
     }

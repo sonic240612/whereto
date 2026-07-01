@@ -20,6 +20,7 @@ export default function Home() {
   const handleConfirm = useCallback(
     (bounds: RectBounds) => {
       setSelecting(false)
+      sessionStorage.setItem('wt_nav', '1')
       navigate('/result', { state: { bounds } })
     },
     [navigate],
