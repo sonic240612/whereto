@@ -104,30 +104,26 @@ export default function MapView({
     if (!onBoundsChange) return
 
     let startPos: L.LatLng | null = null
-    let rect: L.Rectangle | null = null
 
-    const onMouseDown = (e: L.LeafletMouseEvent) => {
+    const onMouseDown = (e: any) => {
       startPos = e.latlng
     }
-
-    const onMouseMove = (e: L.LeafletMouseEvent) => {
+    const onMouseMove = (e: any) => {
       if (!startPos) return
-      if (rect) rect.remove()
-      rect = L.rectangle([[startPos.lat, startPos.lng], [e.latlng.lat, e.latlng.lng]], {
+      if (drawingRef.current) drawingRef.current.remove()
+      drawingRef.current = L.rectangle([[startPos.lat, startPos.lng], [e.latlng.lat, e.latlng.lng]], {
         color: '#FF6B6B',
         weight: 2,
         fillColor: '#FF6B6B',
         fillOpacity: 0.15,
       }).addTo(map)
     }
-
-    const onMouseUp = (e: L.LeafletMouseEvent) => {
+    const onMouseUp = (e: any) => {
       if (!startPos) return
       const swLat = Math.min(startPos.lat, e.latlng.lat)
       const swLng = Math.min(startPos.lng, e.latlng.lng)
       const neLat = Math.max(startPos.lat, e.latlng.lat)
       const neLng = Math.max(startPos.lng, e.latlng.lng)
-
       onBoundsChange({ minLat: swLat, maxLat: neLat, minLng: swLng, maxLng: neLng })
       startPos = null
     }
@@ -136,11 +132,54 @@ export default function MapView({
     map.on('mousemove', onMouseMove)
     map.on('mouseup', onMouseUp)
 
+    const container = map.getContainer()
+    const onTouchStart = (e: TouchEvent) => {
+      const touch = e.touches[0]
+      const rect = container.getBoundingClientRect()
+      const point = L.point(touch.clientX - rect.left, touch.clientY - rect.top)
+      startPos = map.containerPointToLatLng(point)
+    }
+    const onTouchMove = (e: TouchEvent) => {
+      if (!startPos) return
+      e.preventDefault()
+      const touch = e.touches[0]
+      const rect = container.getBoundingClientRect()
+      const point = L.point(touch.clientX - rect.left, touch.clientY - rect.top)
+      const latlng = map.containerPointToLatLng(point)
+      if (drawingRef.current) drawingRef.current.remove()
+      drawingRef.current = L.rectangle([[startPos.lat, startPos.lng], [latlng.lat, latlng.lng]], {
+        color: '#FF6B6B',
+        weight: 2,
+        fillColor: '#FF6B6B',
+        fillOpacity: 0.15,
+      }).addTo(map)
+    }
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!startPos) return
+      const touch = e.changedTouches[0]
+      const rect = container.getBoundingClientRect()
+      const point = L.point(touch.clientX - rect.left, touch.clientY - rect.top)
+      const latlng = map.containerPointToLatLng(point)
+      const swLat = Math.min(startPos.lat, latlng.lat)
+      const swLng = Math.min(startPos.lng, latlng.lng)
+      const neLat = Math.max(startPos.lat, latlng.lat)
+      const neLng = Math.max(startPos.lng, latlng.lng)
+      onBoundsChange({ minLat: swLat, maxLat: neLat, minLng: swLng, maxLng: neLng })
+      startPos = null
+    }
+
+    container.addEventListener('touchstart', onTouchStart, { passive: false })
+    container.addEventListener('touchmove', onTouchMove, { passive: false })
+    container.addEventListener('touchend', onTouchEnd)
+
     return () => {
-      if (rect) rect.remove()
+      if (drawingRef.current) drawingRef.current.remove()
       map.off('mousedown', onMouseDown)
       map.off('mousemove', onMouseMove)
       map.off('mouseup', onMouseUp)
+      container.removeEventListener('touchstart', onTouchStart)
+      container.removeEventListener('touchmove', onTouchMove)
+      container.removeEventListener('touchend', onTouchEnd)
       map.dragging.enable()
       map.doubleClickZoom.enable()
       map.boxZoom.enable()
@@ -177,6 +216,7 @@ export default function MapView({
     <div
       ref={containerRef}
       className={`w-full h-full z-0 ${selecting ? 'cursor-crosshair' : 'cursor-default'} ${className}`}
+      style={{ touchAction: 'none' }}
     />
   )
 }

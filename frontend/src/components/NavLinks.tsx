@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Navigation, ChevronDown, Map, Compass, Globe, Apple } from 'lucide-react'
+import { Navigation, ChevronDown, Map, Globe, Apple } from 'lucide-react'
 import { navigationApps } from '../lib/deeplink'
 
 interface NavLinksProps {
@@ -9,8 +9,6 @@ interface NavLinksProps {
 
 const appIcons: Record<string, typeof Map> = {
   google: Globe,
-  kakao: Map,
-  naver: Compass,
   apple: Apple,
 }
 
@@ -43,22 +41,22 @@ export default function NavLinks({ lat, lng }: NavLinksProps) {
 
       {open && (
         <div className="absolute bottom-full mb-2 left-0 right-0 glass-strong rounded-2xl shadow-xl overflow-hidden divide-y divide-border">
-          {available.map((app) => {
-            const Icon = appIcons[app.id] || Map
-            return (
-              <button
-                key={app.id}
-                onClick={() => {
-                  app.action(lat, lng)
-                  setOpen(false)
-                }}
-                className="w-full flex items-center gap-3 px-4 py-3.5 text-sm font-medium text-text hover:bg-bg-secondary transition-colors duration-150 active:bg-border"
-              >
-                <Icon size={18} className="text-text-light shrink-0" />
-                {app.name}으로 열기
-              </button>
-            )
-          })}
+           {available.map((app) => {
+             const Icon = appIcons[app.id] || Map
+             return (
+               <a
+                 key={app.id}
+                 href={app.getUrl(lat, lng)}
+                 target="_blank"
+                 rel="noopener noreferrer"
+                 onClick={() => setOpen(false)}
+                 className="w-full flex items-center gap-3 px-4 py-3.5 text-sm font-medium text-text hover:bg-bg-secondary transition-colors duration-150 active:bg-border"
+               >
+                 <Icon size={18} className="text-text-light shrink-0" />
+                 {app.name}으로 열기
+               </a>
+             )
+           })}
         </div>
       )}
     </div>
