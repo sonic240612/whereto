@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Loader2, RefreshCw } from 'lucide-react'
 import MapView from '../components/MapView'
 import ResultPin from '../components/ResultPin'
@@ -15,8 +15,10 @@ interface ResultState {
 }
 
 export default function Result() {
+  const navigate = useNavigate()
   const location = useLocation()
   const state = location.state as ResultState | null
+  const handledRef = useRef(false)
 
   const [latlng, setLatlng] = useState<LatLng | null>(null)
   const [address, setAddress] = useState<string | null>(null)
@@ -40,9 +42,19 @@ export default function Result() {
   }, [])
 
   useEffect(() => {
-    if (!state?.bounds) return
+    if (handledRef.current) return
+    handledRef.current = true
+
+    const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+    const isReload = nav?.type === 'reload'
+
+    if (!state?.bounds || isReload) {
+      navigate('/', { replace: true })
+      return
+    }
+
     doFetch(state.bounds)
-  }, [state?.bounds, doFetch])
+  }, [state?.bounds, doFetch, navigate])
 
   const handleRedo = useCallback(() => {
     if (!state?.bounds || redoPromiseRef.current) return
@@ -78,27 +90,6 @@ export default function Result() {
     },
     [latlng],
   )
-
-  if (state?.bounds == null) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-dvh p-8 text-center">
-        <RefreshCw size={48} className="text-border mb-6" />
-        <h2 className="text-xl font-bold text-text mb-2">페이지 새로고침이 감지됨</h2>
-        <p className="text-sm text-text-light mb-6 max-w-xs">
-          새로고침 시 결과가 초기화됩니다. 다시 시작해주세요.
-        </p>
-        <a
-          href="/"
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white transition-all"
-          style={{
-            background: 'linear-gradient(135deg, #FF6B6B 0%, #ee5a24 100%)',
-          }}
-        >
-          처음으로 돌아가기
-        </a>
-      </div>
-    )
-  }
 
   return (
     <div className="relative min-h-dvh flex flex-col">
