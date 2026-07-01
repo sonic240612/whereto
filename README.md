@@ -1,7 +1,6 @@
 # 어디가? (WhereTo?)
 
 🚀 **배포 링크:** [https://whereto-swart.vercel.app](https://whereto-swart.vercel.app)
-⚙️ **백엔드 API:** [https://whereto-backend.vercel.app](https://whereto-backend.vercel.app)
 
 결정 장애 해결을 위한 랜덤 장소 추천 서비스.  
 지도에서 범위를 지정하면 그 안에서 무작위 좌표를 뽑아줍니다.
