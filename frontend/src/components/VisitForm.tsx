@@ -1,103 +1,118 @@
-import { useState } from 'react'
-import { Camera, Send, X } from 'lucide-react'
+import { useState, useCallback } from 'react'
+import { X, Send, Star } from 'lucide-react'
 
 interface VisitFormProps {
-  address: string
-  onSubmit: (data: { photoUrl?: string; comment?: string }) => void
-  onClose: () => void
+  placeName: string
+  defaultAddress: string
+  onSubmit: (data: { name: string; address: string; rating: number; note: string }) => void
+  onCancel: () => void
 }
 
+const ratings = [1, 2, 3, 4, 5]
+
 export default function VisitForm({
-  address,
+  placeName,
+  defaultAddress,
   onSubmit,
-  onClose,
+  onCancel,
 }: VisitFormProps) {
-  const [comment, setComment] = useState('')
-  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
+  const [name, setName] = useState(placeName)
+  const [address, setAddress] = useState(defaultAddress)
+  const [rating, setRating] = useState(3)
+  const [note, setNote] = useState('')
 
-  const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => setPhotoPreview(ev.target?.result as string)
-    reader.readAsDataURL(file)
-  }
-
-  const handleSubmit = async () => {
-    setSubmitting(true)
-    try {
-      onSubmit({
-        photoUrl: photoPreview ?? undefined,
-        comment: comment || undefined,
-      })
-    } finally {
-      setSubmitting(false)
-    }
-  }
+  const handleSubmit = useCallback(() => {
+    if (!name.trim()) return
+    onSubmit({ name: name.trim(), address: address.trim(), rating, note: note.trim() })
+  }, [name, address, rating, note, onSubmit])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end bg-black/40 animate-in fade-in">
-      <div className="w-full bg-white rounded-t-2xl p-5 animate-in slide-in-from-bottom">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-text">도착 인증</h3>
-          <button onClick={onClose} className="p-1 text-text-light hover:text-text">
-            <X size={20} />
-          </button>
-        </div>
-
-        <p className="text-sm text-text-light mb-4">{address}</p>
-
-        <div className="flex flex-col gap-3">
-          <label className="flex items-center gap-2 p-3 rounded-xl border border-border cursor-pointer hover:bg-bg-secondary transition-colors">
-            <Camera size={20} className="text-primary" />
-            <span className="text-sm text-text-light">
-              {photoPreview ? '사진 변경' : '사진 추가하기'}
-            </span>
-            <input
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handlePhoto}
-              className="hidden"
-            />
-          </label>
-
-          {photoPreview && (
-            <div className="relative w-full h-48 rounded-xl overflow-hidden">
-              <img
-                src={photoPreview}
-                alt="preview"
-                className="w-full h-full object-cover"
-              />
-              <button
-                onClick={() => setPhotoPreview(null)}
-                className="absolute top-2 right-2 p-1 bg-black/50 rounded-full"
-              >
-                <X size={16} className="text-white" />
-              </button>
-            </div>
-          )}
-
-          <textarea
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder="운명의 장소에서의 소감을 남겨보세요..."
-            maxLength={500}
-            rows={3}
-            className="w-full resize-none rounded-xl border border-border p-3 text-sm text-text placeholder:text-text-light outline-none focus:border-primary transition-colors"
-          />
-
+    <div className="fixed inset-0 z-50 flex items-end">
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={onCancel} />
+      <div className="relative w-full glass-strong rounded-t-3xl shadow-2xl p-6 pb-8 max-h-[85vh] overflow-y-auto animate-[slideUp_0.3s_ease-out]">
+        <div className="flex items-center justify-between mb-6">
+          <h3 className="text-lg font-bold text-text">방문 기록</h3>
           <button
-            onClick={handleSubmit}
-            disabled={submitting}
-            className="flex items-center justify-center gap-2 py-3.5 rounded-xl text-base font-semibold text-white transition-all disabled:opacity-40"
-            style={{ backgroundColor: '#FF6B6B' }}
+            onClick={onCancel}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-border/50 hover:bg-border transition-colors text-text-light"
           >
-            <Send size={18} />
-            {submitting ? '저장 중...' : '도착 완료!'}
+            <X size={16} />
           </button>
         </div>
+
+        <div className="space-y-5">
+          <div>
+            <label className="block text-xs font-semibold text-text-light mb-1.5 uppercase tracking-wider">
+              장소 이름
+            </label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl bg-white border border-border text-sm font-medium text-text placeholder:text-text-light/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+              placeholder="장소 이름을 입력하세요"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-text-light mb-1.5 uppercase tracking-wider">
+              주소
+            </label>
+            <input
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              className="w-full px-4 py-3 rounded-xl bg-white border border-border text-sm font-medium text-text placeholder:text-text-light/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all"
+              placeholder="주소를 입력하세요"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-text-light mb-1.5 uppercase tracking-wider">
+              평점
+            </label>
+            <div className="flex gap-1.5">
+              {ratings.map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setRating(r)}
+                  className={`p-1.5 rounded-lg transition-all duration-200 ${
+                    r <= rating
+                      ? 'text-primary scale-100'
+                      : 'text-border hover:text-border/70 scale-90'
+                  }`}
+                >
+                  <Star size={24} fill={r <= rating ? '#FF6B6B' : 'none'} />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-text-light mb-1.5 uppercase tracking-wider">
+              메모
+            </label>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={3}
+              className="w-full px-4 py-3 rounded-xl bg-white border border-border text-sm font-medium text-text placeholder:text-text-light/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all resize-none"
+              placeholder="메모를 입력하세요"
+            />
+          </div>
+        </div>
+
+        <button
+          onClick={handleSubmit}
+          disabled={!name.trim()}
+          className="w-full flex items-center justify-center gap-2 mt-7 py-3.5 rounded-xl text-base font-bold text-white transition-all duration-200 disabled:opacity-35 disabled:cursor-not-allowed active:scale-[0.98]"
+          style={{
+            background: name.trim()
+              ? 'linear-gradient(135deg, #FF6B6B 0%, #ee5a24 100%)'
+              : '#d1d5db',
+          }}
+        >
+          <Send size={18} />
+          저장하기
+        </button>
       </div>
     </div>
   )

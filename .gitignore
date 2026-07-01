@@ -4,3 +4,4 @@ dev.db
 .env
 *.tsbuildinfo
 .DS_Store
+WhereTo?_plan.md

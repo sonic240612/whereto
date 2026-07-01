@@ -1,132 +1,96 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Image, History, Target, Crosshair } from 'lucide-react'
+import { Compass, ArrowRight, Image } from 'lucide-react'
 import MapView from '../components/MapView'
-import RangeSelector from '../components/RangeSelector'
 import FabButton from '../components/FabButton'
-import { useStore } from '../store/useStore'
-import type { LatLng, RectBounds } from '../types'
-
-function getCurrentPosition(): Promise<LatLng> {
-  return new Promise((resolve) => {
-    if (!navigator.geolocation) {
-      resolve({ lat: 37.5665, lng: 126.978 })
-      return
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) =>
-        resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => resolve({ lat: 37.5665, lng: 126.978 }),
-      { timeout: 5000 },
-    )
-  })
-}
+import RangeSelector from '../components/RangeSelector'
+import useGeolocation from '../hooks/useGeolocation'
+import type { RectBounds } from '../types'
 
 export default function Home() {
   const navigate = useNavigate()
-  const { userLocation, setUserLocation, setBounds, bounds, setStatus, status } =
-    useStore()
-  const [showSelector, setShowSelector] = useState(false)
-  useEffect(() => {
-    if (!userLocation) {
-      getCurrentPosition().then(setUserLocation)
-    }
-  }, [userLocation, setUserLocation])
+  const { location: userLocation, error: geoError } = useGeolocation()
+  const [selecting, setSelecting] = useState(false)
 
   const handlePick = useCallback(() => {
-    if (bounds) {
-      setStatus('selecting')
-      navigate('/result')
-    } else {
-      setShowSelector(true)
-    }
-  }, [bounds, setStatus, navigate])
+    if (!userLocation) return
+    setSelecting(true)
+  }, [userLocation])
 
-  const handleBoundsConfirm = useCallback(
-    (b: RectBounds) => {
-      setBounds(b)
-      setShowSelector(false)
-      setStatus('selecting')
-      navigate('/result')
+  const handleConfirm = useCallback(
+    (bounds: RectBounds) => {
+      setSelecting(false)
+      navigate('/result', { state: { bounds } })
     },
-    [setBounds, setStatus, navigate],
+    [navigate],
   )
 
+  const handleCancel = useCallback(() => {
+    setSelecting(false)
+  }, [])
+
   return (
-    <div className="relative w-full h-dvh overflow-hidden">
-      <MapView
-        center={userLocation ?? undefined}
-        bounds={bounds && status !== 'selecting' ? bounds : null}
-        onMapLoad={() => {}}
-        className="absolute inset-0"
-      />
+    <>
+      <div className="relative flex flex-col min-h-dvh">
+        <MapView
+          center={userLocation ?? undefined}
+          className="absolute inset-0"
+        />
 
-      <div className="absolute top-4 left-4 z-10">
-        <h1 className="text-2xl font-bold text-black">
-          어디가?
-        </h1>
-      </div>
-
-      {status === 'idle' && !bounds && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center gap-3 pointer-events-none">
-          <Target size={64} className="text-white/80 drop-shadow-lg" />
-          <p className="text-black text-base font-semibold text-center leading-relaxed">
-            지도를 드래그하여
-            <br />
-            탐색 범위를 지정하세요
-          </p>
-        </div>
-      )}
-
-      <div className="absolute bottom-0 left-0 right-0 z-20 pb-8 px-4 flex flex-col items-center gap-4 pointer-events-none">
-        <div className="pointer-events-auto">
-          <FabButton
-            onClick={handlePick}
-            label={bounds ? '운명의 좌표 뽑기' : '범위부터 지정하기'}
-          />
+        {/* Top: branding */}
+        <div className="relative z-10 p-5 pb-0">
+          <div className="inline-flex items-center gap-2.5 glass rounded-2xl px-5 py-2.5 shadow-lg">
+            <Compass size={22} className="text-primary" />
+            <div>
+              <h1 className="text-base font-extrabold tracking-tight text-text" style={{ fontFamily: '"Pretendard", sans-serif' }}>
+                WhereTo
+              </h1>
+              <p className="text-[11px] font-semibold text-text-light tracking-wide">
+                오늘의 행선지를 랜덤 추첨
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className="flex items-center gap-6 pointer-events-auto">
-          <button
-            onClick={() => setShowSelector(true)}
-            className="flex flex-col items-center gap-1"
-          >
-            <div className="w-10 h-10 rounded-full bg-white/90 backdrop-blur-sm shadow flex items-center justify-center">
-              <Crosshair size={18} className="text-text" />
+        {/* Bottom: controls */}
+        <div className="relative z-10 mt-auto p-5 pb-8 space-y-3">
+          {geoError && (
+            <div className="glass-strong rounded-2xl p-4 shadow-lg mb-3">
+              <p className="text-sm font-semibold text-text">
+                위치 정보를 불러올 수 없습니다
+              </p>
+              <p className="text-xs text-text-light mt-1">
+                브라우저의 위치 권한을 확인해주세요
+              </p>
             </div>
-            <span className="text-[13px] text-black">
-              범위 설정
-            </span>
-          </button>
-          <button
-            onClick={() => navigate('/gallery')}
-            className="flex flex-col items-center gap-1"
-          >
-            <div className="w-10 h-10 rounded-full bg-white/90 backdrop-blur-sm shadow flex items-center justify-center">
-              <Image size={18} className="text-text" />
+          )}
+
+          {userLocation && (
+            <div className="flex items-center justify-center">
+              <FabButton onClick={handlePick} disabled={selecting} />
             </div>
-            <span className="text-[13px] text-black">
-              갤러리
-            </span>
-          </button>
-          <button className="flex flex-col items-center gap-1">
-            <div className="w-10 h-10 rounded-full bg-white/90 backdrop-blur-sm shadow flex items-center justify-center">
-              <History size={18} className="text-text" />
-            </div>
-            <span className="text-[13px] text-black">
-              내 기록
-            </span>
-          </button>
+          )}
+
+          <div className="flex items-center justify-center">
+            <button
+              onClick={() => navigate('/gallery')}
+              className="flex items-center gap-2 px-5 py-2.5 glass rounded-xl shadow-lg text-sm font-semibold text-text hover:bg-white/90 transition-all active:scale-[0.97]"
+            >
+              <Image size={16} />
+              방문 기록 보기
+              <ArrowRight size={14} />
+            </button>
+          </div>
         </div>
       </div>
 
-      {showSelector && (
+      {selecting && userLocation && (
         <RangeSelector
           userLocation={userLocation}
-          onConfirm={handleBoundsConfirm}
-          onCancel={() => setShowSelector(false)}
+          onConfirm={handleConfirm}
+          onCancel={handleCancel}
         />
       )}
-    </div>
+    </>
   )
 }
