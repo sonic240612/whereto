@@ -41,10 +41,13 @@ export default function Result() {
   }, [])
 
   useEffect(() => {
-    const navIntent = sessionStorage.getItem('wt_nav')
-    sessionStorage.removeItem('wt_nav')
+    if (!state?.bounds) {
+      navigate('/', { replace: true })
+      return
+    }
 
-    if (!state?.bounds || !navIntent) {
+    const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
+    if (nav?.type === 'reload') {
       navigate('/', { replace: true })
       return
     }
