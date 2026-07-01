@@ -9,12 +9,14 @@ datasource db {
 
 model Visit {
   id        String   @id @default(cuid())
+  name      String?
   lat       Float
   lng       Float
   address   String
+  rating    Int      @default(3)
+  note      String?
   photoUrl  String?
   photoId   String?
-  comment   String?
   createdAt DateTime @default(now())
 }
 

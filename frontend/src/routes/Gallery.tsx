@@ -8,7 +8,7 @@ export default function Gallery() {
   const navigate = useNavigate()
   const [visits, setVisits] = useState<Visit[]>([])
   const [loading, setLoading] = useState(true)
-  const [deleting, setDeleting] = useState<number | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
 
   useEffect(() => {
     fetchVisits()
@@ -18,7 +18,7 @@ export default function Gallery() {
   }, [])
 
   const handleDelete = useCallback(
-    async (id: number) => {
+    async (id: string) => {
       setDeleting(id)
       try {
         await deleteVisit(id)
@@ -110,7 +110,7 @@ export default function Gallery() {
               <div className="p-5 space-y-3.5">
                 <div className="flex items-start justify-between gap-3">
                   <h3 className="text-base font-bold text-text leading-snug">
-                    {visit.name}
+                    {visit.name || visit.address}
                   </h3>
                   <button
                     onClick={() => handleDelete(visit.id)}
@@ -146,7 +146,7 @@ export default function Gallery() {
 
                 <div className="flex items-center gap-1.5 text-[11px] font-medium text-text-light">
                   <Calendar size={12} />
-                  {formatDate(visit.created_at)}
+                  {formatDate(visit.createdAt)}
                 </div>
               </div>
             </div>

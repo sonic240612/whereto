@@ -17,14 +17,16 @@ export interface CoordResult {
 }
 
 export interface Visit {
-  id: number
-  name: string
-  address: string
-  rating: number
-  note: string
+  id: string
+  name: string | null
   lat: number
   lng: number
-  created_at: string
+  address: string
+  rating: number
+  note: string | null
+  photoUrl: string | null
+  photoId: string | null
+  createdAt: string
 }
 
 export type AppStatus = 'idle' | 'selecting' | 'result' | 'visit'
