@@ -1,0 +1,28 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Visit {
+  id        String   @id @default(cuid())
+  lat       Float
+  lng       Float
+  address   String
+  photoUrl  String?
+  photoId   String?
+  comment   String?
+  createdAt DateTime @default(now())
+}
+
+model Share {
+  id        String   @id @default(cuid())
+  lat       Float
+  lng       Float
+  address   String
+  token     String   @unique
+  createdAt DateTime @default(now())
+}
