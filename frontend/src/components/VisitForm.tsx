@@ -1,10 +1,10 @@
 import { useState, useCallback } from 'react'
-import { X, Send, Star } from 'lucide-react'
+import { X, Send, Star, Loader2 } from 'lucide-react'
 
 interface VisitFormProps {
   placeName: string
   defaultAddress: string
-  onSubmit: (data: { name: string; address: string; rating: number; note: string }) => void
+  onSubmit: (data: { name: string; address: string; rating: number; note: string }) => Promise<void>
   onCancel: () => void
 }
 
@@ -20,11 +20,21 @@ export default function VisitForm({
   const [address, setAddress] = useState(defaultAddress)
   const [rating, setRating] = useState(3)
   const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleSubmit = useCallback(() => {
-    if (!name.trim()) return
-    onSubmit({ name: name.trim(), address: address.trim(), rating, note: note.trim() })
-  }, [name, address, rating, note, onSubmit])
+  const handleSubmit = useCallback(async () => {
+    if (!name.trim() || saving) return
+    setSaving(true)
+    setError(null)
+    try {
+      await onSubmit({ name: name.trim(), address: address.trim(), rating, note: note.trim() })
+    } catch {
+      setError('저장에 실패했습니다. 서버가 실행 중인지 확인해주세요.')
+    } finally {
+      setSaving(false)
+    }
+  }, [name, address, rating, note, onSubmit, saving])
 
   return (
     <div className="fixed inset-0 z-50 flex items-end">
@@ -100,18 +110,28 @@ export default function VisitForm({
           </div>
         </div>
 
+        {error && (
+          <div className="mt-4 p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-600 font-medium">
+            {error}
+          </div>
+        )}
+
         <button
           onClick={handleSubmit}
-          disabled={!name.trim()}
-          className="w-full flex items-center justify-center gap-2 mt-7 py-3.5 rounded-xl text-base font-bold text-white transition-all duration-200 disabled:opacity-35 disabled:cursor-not-allowed active:scale-[0.98]"
+          disabled={!name.trim() || saving}
+          className="w-full flex items-center justify-center gap-2 mt-4 py-3.5 rounded-xl text-base font-bold text-white transition-all duration-200 disabled:opacity-35 disabled:cursor-not-allowed active:scale-[0.98]"
           style={{
-            background: name.trim()
-              ? 'linear-gradient(135deg, #FF6B6B 0%, #ee5a24 100%)'
-              : '#d1d5db',
+            background: !name.trim() || saving
+              ? '#d1d5db'
+              : 'linear-gradient(135deg, #FF6B6B 0%, #ee5a24 100%)',
           }}
         >
-          <Send size={18} />
-          저장하기
+          {saving ? (
+            <Loader2 size={18} className="animate-spin" />
+          ) : (
+            <Send size={18} />
+          )}
+          {saving ? '저장 중...' : '저장하기'}
         </button>
       </div>
     </div>
