@@ -24,8 +24,6 @@ body {
   background-color: var(--color-bg);
   color: var(--color-text);
   overscroll-behavior: none;
-  -webkit-user-select: none;
-  user-select: none;
 }
 
 #root {
@@ -38,6 +36,23 @@ body {
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
+}
+
+button, a, input, textarea, select, summary { touch-action: manipulation; }
+button:not(:disabled), summary { cursor: pointer; }
+:focus-visible { outline: 3px solid #0f766e; outline-offset: 3px; }
+#root:has([aria-modal="true"]) > .app-home-link { visibility: hidden; }
+.leaflet-container { font-family: inherit; }
+.leaflet-control-attribution { max-width: calc(100vw - 36px); overflow-wrap: anywhere; }
+.whereto-map .leaflet-bottom.leaflet-right { bottom: min(var(--map-bottom-inset, 0px), calc(100% - 150px)); }
+.whereto-map .leaflet-control-zoom { border: 0; border-radius: 14px; overflow: hidden; box-shadow: 0 2px 14px #172b4420; }
+.whereto-map .leaflet-control-zoom a { width: 40px; height: 40px; line-height: 40px; color: #374151; }
+.whereto-map .leaflet-control-attribution { padding: 2px 7px max(2px, env(safe-area-inset-bottom)); font-size: 9px; background: #ffffffd9; }
+.whereto-map .leaflet-container { background: #edf1ed; }
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-design='liquid']) *,
+  html:not([data-design='liquid']) *::before,
+  html:not([data-design='liquid']) *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 
 @keyframes shimmer {

@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Navigation, ChevronDown, Map, Globe, Apple } from 'lucide-react'
 import { navigationApps } from '../lib/deeplink'
 
 interface NavLinksProps {
   lat: number
   lng: number
+  compact?: boolean
 }
 
 const appIcons: Record<string, typeof Map> = {
@@ -12,8 +13,29 @@ const appIcons: Record<string, typeof Map> = {
   apple: Apple,
 }
 
-export default function NavLinks({ lat, lng }: NavLinksProps) {
+export default function NavLinks({ lat, lng, compact = false }: NavLinksProps) {
   const [open, setOpen] = useState(false)
+  const id = useId()
+  const containerRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Node && !containerRef.current?.contains(event.target)) setOpen(false)
+    }
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      setOpen(false)
+      buttonRef.current?.focus()
+    }
+    document.addEventListener('pointerdown', dismiss)
+    document.addEventListener('keydown', escape)
+    return () => {
+      document.removeEventListener('pointerdown', dismiss)
+      document.removeEventListener('keydown', escape)
+    }
+  }, [open])
 
   const available = navigationApps.filter((app) => {
     if (app.id === 'apple') {
@@ -23,24 +45,27 @@ export default function NavLinks({ lat, lng }: NavLinksProps) {
   })
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="flex min-w-0 flex-col-reverse gap-2">
       <button
+        data-glass="action" data-glass-tone="accent"
+        ref={buttonRef}
+        type="button"
+        aria-expanded={open}
+        aria-controls={id}
         onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl text-base font-bold text-white shadow-lg shadow-secondary/30 transition-all duration-200 active:scale-[0.97]"
-        style={{
-          background: 'linear-gradient(135deg, #4ECDC4 0%, #44bdac 100%)',
-        }}
+        className={`flex min-h-11 w-full items-center justify-center whitespace-nowrap rounded-xl bg-teal-700 py-2.5 font-bold text-white transition-colors hover:bg-teal-800 ${compact ? 'gap-1 px-1.5 text-xs sm:text-sm' : 'gap-2 px-3 text-sm'}`}
       >
-        <Navigation size={20} />
+        <Navigation size={17} className={compact ? 'hidden shrink-0 sm:block' : 'shrink-0'} aria-hidden="true" />
         길찾기
         <ChevronDown
-          size={18}
-          className={`transition-transform duration-300 ${open ? 'rotate-180' : ''}`}
+          size={16}
+          aria-hidden="true"
+          className={`shrink-0 transition-transform duration-200 ${compact ? 'w-3 sm:w-4' : ''} ${open ? '' : 'rotate-180'}`}
         />
       </button>
 
       {open && (
-        <div className="absolute bottom-full mb-2 left-0 right-0 glass-strong rounded-2xl shadow-xl overflow-hidden divide-y divide-border">
+        <nav data-glass-menu id={id} aria-label="길찾기 앱 선택" className="min-w-0 rounded-xl border border-border bg-bg-secondary p-1">
            {available.map((app) => {
              const Icon = appIcons[app.id] || Map
              return (
@@ -49,15 +74,15 @@ export default function NavLinks({ lat, lng }: NavLinksProps) {
                  href={app.getUrl(lat, lng)}
                  target="_blank"
                  rel="noopener noreferrer"
-                 onClick={() => setOpen(false)}
-                 className="w-full flex items-center gap-3 px-4 py-3.5 text-sm font-medium text-text hover:bg-bg-secondary transition-colors duration-150 active:bg-border"
+                 onClick={() => { setOpen(false); buttonRef.current?.focus() }}
+                 className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 py-2 text-xs font-medium text-text transition-colors hover:bg-white [overflow-wrap:anywhere]"
                >
-                 <Icon size={18} className="text-text-light shrink-0" />
+                 <Icon size={16} className="shrink-0 text-text-light" aria-hidden="true" />
                  {app.name}으로 열기
                </a>
              )
            })}
-        </div>
+        </nav>
       )}
     </div>
   )

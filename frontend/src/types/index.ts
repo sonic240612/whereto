@@ -28,5 +28,3 @@ export interface Visit {
   photoId: string | null
   createdAt: string
 }
-
-export type AppStatus = 'idle' | 'selecting' | 'result' | 'visit'

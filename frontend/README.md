@@ -1,32 +1,59 @@
-# React + TypeScript + Vite
+# WhereTo 프론트엔드
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Node.js 24 이상에서 실행합니다. 백엔드·DB는 필요하지 않습니다.
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```powershell
+npm ci
+npm run dev -- --host 127.0.0.1 --port 5180 --strictPort
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+`http://127.0.0.1:5180`에 접속합니다. `npm run dev`만 실행하면 Vite 기본 포트는 5173입니다.
+
+- `npm run lint`: 소스와 Vite 설정을 검사하며 경고도 실패로 처리
+- `npm test`: 외부 API 호출 없는 공급자·도메인 로직·저장소 회귀 테스트
+- `npm run build`: strict TypeScript 검사와 Vite 배포 빌드
+- `npm run preview`: 빌드 결과 미리보기
+
+## 카카오 지도와 장소 검색
+
+처음 설정할 때 [.env.example](.env.example)을 `.env.local`로 복사하고 다음 값을 입력합니다. 기존 `.env.local`이 있다면 해당 항목만 수정합니다.
+
+```dotenv
+VITE_KAKAO_MAP_APP_KEY=발급받은_JavaScript_키
+```
+
+카카오 앱에서 **카카오맵 → 사용 설정**을 켜고, **앱 → 플랫폼 키 → JavaScript 키 → JavaScript SDK 도메인**에 실제 접속 도메인을 등록해야 합니다. 로컬 개발은 `http://localhost:5180`, `http://127.0.0.1:5180`을 등록합니다. 5173 포트를 사용하면 그 주소도 추가합니다. 배포 환경은 `https://whereto-swart.vercel.app` 또는 실제 프로덕션·미리보기 도메인을 등록합니다.
+
+지도 Web SDK용 **JavaScript 키**를 사용하세요. REST API 키나 Admin 키를 프론트엔드에 넣으면 안 됩니다. `.env.local`은 Git에서 제외되지만 `VITE_` 값은 브라우저에 공개됩니다. 설정 변경 후 개발 서버를 다시 시작하고, 배포 환경에서는 재빌드·재배포합니다.
+
+| 설정 상태 | 지도·검색 동작 |
+| --- | --- |
+| 카카오 키 있음 | Kakao 지도 Web SDK와 services로 지도·장소 검색·추첨 후보 모두 처리 |
+| 카카오 키 없음 | OpenFreeMap Bright/MapLibre 지도와 Photon으로 개발 미리보기 |
+| 카카오 키 있음 + 로딩·검색 실패 | 오류·재시도 안내, 다른 공급자로 자동 전환하지 않음 |
+
+카카오 지역 검색은 키워드 검색 후 결과가 없을 때 주소 검색을 시도합니다. 상단 가로 바에서 `전체`와 카카오 18개 카테고리를 클릭·터치로 선택하고 좌우 스크롤할 수 있습니다. 개별 선택은 해당 분류 코드만 조회합니다. `전체`는 18개 분류 중 조회당 무작위 4개 분류의 제한된 페이지 후보를 사용하며, 모든 장소에 대한 균등 추첨이 아닙니다. 결과 화면에서 카테고리를 바꾸면 기존 결과를 지우고 대기하며, `뽑기` 버튼을 눌렀을 때 같은 범위에서 새 카테고리로 추첨합니다. 카카오로 전환해도 브라우저에 저장한 기존 방문 기록은 유지됩니다.
+
+영역 선택은 지도에 점을 3~50개 찍고 `지정`을 눌러 다각형 영역을 확정한 뒤, `뽑기` 버튼으로 추첨하는 방식입니다. 영역을 지정하는 것만으로 장소를 조회하지 않습니다. 드래그는 지도 이동이며, 마지막 점 취소와 전체 지우기를 지원합니다. 교차하거나 면적이 없는 다각형은 거절하고 오목한 영역은 허용합니다. 결과 화면에 항상 보이는 `영역 재지정`으로 기존 영역을 수정할 수 있습니다. 재지정 후에도 `뽑기`를 눌러 추첨하며, 취소하면 기존 결과와 카테고리를 유지합니다. 새 추첨은 `뽑기` 또는 `다시 뽑기` 버튼에서만 시작합니다. 다각형 좌표는 결과 URL의 `polygon`에 저장하며, 조회 지점과 최종 장소 모두 다각형 내부인지 검사합니다. `polygon`이 잘못된 URL을 사각형으로 완화해서 추첨하지 않습니다. 다각형이 없는 기존 결과 링크는 사각형 영역으로 호환됩니다.
+
+실제 키·API 활성화·도메인 설정 후 지도 표시, 키워드/주소 검색, 식당 추첨과 오류 복구를 확인합니다. 공급자 테스트는 대역 응답을 사용하므로 계정 설정 검증을 대신하지 않습니다. SDK에서 HTTP 403과 `disabled OPEN_MAP_AND_LOCAL service`가 반환되면 해당 앱의 **카카오맵 → 사용 설정**을 먼저 확인합니다.
+
+카카오의 활성화·무료 쿼터 조건은 [공식 안내](https://developers.kakao.com/docs/ko/kakaomap/common)를 확인합니다. 새로 활성화한 두 번째 이후 앱은 무료 쿼터 대상이 아닐 수 있습니다. 자세한 예외·설정·저장/공유 방식은 [루트 README](../README.md)에 있습니다.
+
+## 디자인 전환과 Liquid Glass
+
+처음 접속하면 Liquid Glass 디자인을 사용합니다. 오른쪽 위 설정 버튼을 열면 이전 클래식 디자인으로 전환하거나 유리 틴트 농도를 0~100%로 조절할 수 있습니다. 기본값과 초기화 값은 80%이며 이미 저장한 농도는 그대로 유지합니다. 디자인은 `whereto_design`, 틴트는 `whereto_glass_tint`에 저장하고 다른 탭에도 동기화합니다. 지도·현재 결과·편집 중인 다각형은 설정을 바꾸어도 유지됩니다. 설정창 자체는 농도와 관계없이 읽기 쉽게 유지합니다. 클래식에서는 틴트 조절을 비활성화하고 기존 값을 보관합니다.
+
+[Apple의 Liquid Glass 소개](https://developer.apple.com/videos/play/wwdc2025/219/)를 참고한 웹 구현이며 Apple 시스템 렌더러 자체는 아닙니다. Chromium에서는 CSS `backdrop-filter`에 SVG 변위 필터를 연결해 실제 배경을 굴절하고 RGB 채널에 작은 차이를 줍니다. 지도 이미지를 캡처하거나 복제하지 않으며, 생성하는 PNG는 유리 표면 법선 정보뿐입니다. SVG backdrop 변위를 지원하지 않는 브라우저는 blur와 반사광으로 표시합니다.
+
+모션은 projects-portal과 같이 처음에는 켜져 있으며 설정의 `모션 효과`에서 직접 끌 수 있습니다. 선택은 `whereto_glass_motion`에 저장합니다. Liquid Glass에서는 운영체제의 동작 줄이기와 별개로 이 선택을 사용하며, 클래식은 기존 시스템 설정을 따릅니다. 호버 시 유리 확대와 포인터를 따라 움직이는 반사광, 누름 압축·드래그 변형·해제 스프링 복원을 적용합니다. 카테고리 렌즈는 이동 속도에 따라 늘어나고 미세하게 기울어진 뒤 정착합니다. 모션을 끄면 정적인 유리 표현을 유지하고 `prefers-reduced-transparency`와 강제 고대비 설정은 계속 따릅니다. 클래식에서는 유리 필터와 모션 이벤트를 해제합니다.
+
+필터는 보이는 유리 표면에만 만들고, 법선 이미지 크기는 최대 512px/65,536픽셀입니다. 크기가 바뀌는 렌즈의 이미지 재생성은 120ms 간격으로 제한하며, 눌림은 기존 필터 강도만 갱신합니다.
+
+## 키 없는 개발 미리보기
+
+`VITE_GEOCODER_URL`은 Photon 호환 URL입니다. `VITE_MAP_STYLE_URL`과 `VITE_MAP_ATTRIBUTION`으로 벡터 지도 공급자를 바꿀 수 있고, `VITE_MAP_TILE_URL`을 설정하면 래스터 지도 모드가 우선합니다. 이 설정들은 카카오 키가 없는 경우에만 사용합니다. 기존 `.env.local`의 `VITE_MAP_TILE_URL`을 지우면 기본 벡터 지도로 돌아갑니다.
+
+## 배포
+
+Vercel Root Directory는 `frontend`, Build Command는 `npm run build`, Output Directory는 `dist`입니다. Vercel 환경변수에 `VITE_KAKAO_MAP_APP_KEY`를 넣고 새 배포를 생성해야 해당 빌드가 카카오를 사용합니다. `vercel.json`이 공유·갤러리·결과 URL의 직접 접근을 SPA로 연결합니다.

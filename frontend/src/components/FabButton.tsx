@@ -13,6 +13,7 @@ export default function FabButton({
 }: FabButtonProps) {
   return (
     <button
+      data-glass="accent"
       onClick={onClick}
       disabled={disabled}
       className="flex items-center gap-2.5 px-7 py-4 rounded-2xl text-base font-bold text-white shadow-xl shadow-primary/30 transition-all duration-200 active:scale-[0.96] hover:shadow-primary/40 disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"

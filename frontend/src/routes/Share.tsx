@@ -1,105 +1,84 @@
-import { useEffect, useState, useMemo } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { MapPin, Target } from 'lucide-react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { ChevronUp, Ellipsis } from 'lucide-react'
 import MapView from '../components/MapView'
 import NavLinks from '../components/NavLinks'
-import type { LatLng } from '../types'
+import ResultPin from '../components/ResultPin'
+import { addressAt } from '../lib/geocode'
+import { parseLatLng } from '../lib/validation'
 
 export default function Share() {
-  const [searchParams] = useSearchParams()
-  const [address, setAddress] = useState<string | null>(null)
-
-  const latlng: LatLng | null = useMemo(() => {
-    const lat = parseFloat(searchParams.get('lat') ?? '')
-    const lng = parseFloat(searchParams.get('lng') ?? '')
-    if (isNaN(lat) || isNaN(lng)) return null
-    return { lat, lng }
-  }, [searchParams])
+  const [params] = useSearchParams()
+  const query = params.toString()
+  const point = useMemo(() => parseLatLng(new URLSearchParams(query)), [query])
+  const suppliedAddress = params.get('address')?.trim() ?? ''
+  const validAddress = suppliedAddress.length <= 2000
+  const [address, setAddress] = useState('')
+  const [error, setError] = useState('')
+  const [retry, setRetry] = useState(0)
+  const [expanded, setExpanded] = useState(false)
+  const [dockInset, setDockInset] = useState(164)
+  const dockRef = useRef<HTMLElement>(null)
+  const moreId = useId()
+  const isValid = Boolean(point && validAddress)
 
   useEffect(() => {
-    if (!latlng) return
-    const paramAddr = searchParams.get('address')
-    if (paramAddr) {
-      setAddress(decodeURIComponent(paramAddr))
-      return
-    }
+    const dock = dockRef.current
+    if (!dock) return
+    const updateInset = () => setDockInset(Math.ceil(dock.offsetHeight + (parseFloat(getComputedStyle(dock).bottom) || 24) + 12))
+    const observer = new ResizeObserver(updateInset)
+    observer.observe(dock)
+    updateInset()
+    return () => observer.disconnect()
+  }, [isValid])
 
-    let cancelled = false
-    fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${latlng.lat}&lon=${latlng.lng}&format=json&accept-language=ko`,
-    )
-      .then((r) => r.json())
-      .then((data) => {
-        if (!cancelled) {
-          setAddress(data.display_name ?? '주소를 찾을 수 없음')
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setAddress('주소를 찾을 수 없음')
-      })
+  useEffect(() => {
+    setAddress('')
+    setError('')
+    if (!point || !validAddress) return
+    // URLSearchParams has already decoded the value, including literal %.
+    if (suppliedAddress) { setAddress(suppliedAddress); return }
+    const controller = new AbortController()
+    const timer = setTimeout(() => {
+      addressAt(point.lat, point.lng, controller.signal)
+        .then(value => {
+          if (!controller.signal.aborted) setAddress(value ?? '주소 정보가 없는 좌표')
+        })
+        .catch((reason: unknown) => {
+          if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : '주소를 불러오지 못했습니다.')
+        })
+    }, 0)
+    return () => { clearTimeout(timer); controller.abort() }
+  }, [point, suppliedAddress, validAddress, retry])
 
-    return () => {
-      cancelled = true
-    }
-  }, [latlng, searchParams])
-
-  if (!latlng) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-dvh p-8 text-center bg-bg">
-        <Target size={48} className="text-border mb-6" />
-        <h2 className="text-xl font-bold text-text mb-2">
-          잘못된 공유 링크입니다
-        </h2>
-        <p className="text-sm text-text-light mb-6 max-w-xs">
-          지도 좌표 정보가 포함되지 않은 링크입니다.
-        </p>
-        <a
-          href="/"
-          className="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-bold text-white transition-all"
-          style={{
-            background: 'linear-gradient(135deg, #FF6B6B 0%, #ee5a24 100%)',
-          }}
-        >
-          WhereTo 시작하기
-        </a>
-      </div>
-    )
-  }
-
+  if (!point || !validAddress) return (
+    <main className="flex min-h-dvh flex-col items-center justify-center gap-4 p-6 text-center">
+      <h1 className="text-xl font-bold">잘못된 공유 링크입니다</h1>
+      <p>올바른 위도·경도와 주소가 포함된 링크를 확인해주세요.</p>
+      <Link to="/" className="rounded-xl bg-primary px-6 py-3 font-bold text-white">WhereTo 시작하기</Link>
+    </main>
+  )
   return (
-    <div className="relative min-h-dvh flex flex-col">
-      <div className="relative flex-1 min-h-[55dvh]">
-        <MapView center={latlng} marker={latlng} className="absolute inset-0" />
-
-        <div className="absolute top-6 left-0 right-0 z-10 flex justify-center">
-          <div className="glass rounded-2xl px-4 py-2 shadow-lg flex items-center gap-2">
-            <MapPin size={16} className="text-primary" fill="#FF6B6B" />
-            <span className="text-xs font-bold text-text">
-              {address ?? '주소 로딩 중...'}
-            </span>
-          </div>
+    <main className="relative h-dvh overflow-hidden">
+      <h1 className="sr-only">공유된 장소</h1>
+      <MapView center={point} marker={point} bottomInset={dockInset} className="absolute inset-0" />
+      <section data-glass="panel" ref={dockRef} aria-label="공유된 장소" className="absolute inset-x-3 z-10 mx-auto max-h-[70dvh] max-w-lg overflow-y-auto overscroll-contain rounded-2xl border border-white/80 bg-white/95 p-3 shadow-xl backdrop-blur-sm" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 24px)' }}>
+        <div className="flex items-start gap-2">
+          <ResultPin label="공유된 장소" address={address || (error ? '주소를 확인할 수 없습니다.' : '주소를 불러오는 중…')} expanded={expanded} />
+          <button data-glass="action" type="button" aria-expanded={expanded} aria-controls={moreId} aria-label={expanded ? '장소 더보기 접기' : '장소 더보기'} onClick={() => setExpanded(value => !value)} className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl text-text-light hover:bg-bg-secondary">
+            {expanded ? <ChevronUp size={20} aria-hidden="true" /> : <Ellipsis size={22} aria-hidden="true" />}
+          </button>
         </div>
-      </div>
-
-      <div className="glass-strong rounded-t-3xl p-5 pb-8 space-y-4 shadow-2xl">
-        <div className="text-center">
-          <h1 className="text-lg font-extrabold text-text mb-1">
-            누군가가 공유한 장소
-          </h1>
-          {address && (
-            <p className="text-sm text-text-light leading-relaxed">{address}</p>
-          )}
+        {error && <div role="alert" className="mt-2 rounded-xl bg-red-50 p-3 text-sm text-red-800 [overflow-wrap:anywhere]">{error}<button data-glass="action" type="button" className="ml-3 min-h-11 font-semibold underline" onClick={() => setRetry(value => value + 1)}>재시도</button></div>}
+        <div className="mt-3 grid grid-cols-2 items-end gap-2">
+          <NavLinks lat={point.lat} lng={point.lng} />
+          <Link data-glass="action" to="/" className="flex min-h-11 min-w-0 items-center justify-center rounded-xl border border-border px-3 py-2.5 text-center text-sm font-semibold">나도 뽑으러 가기</Link>
         </div>
-
-        <NavLinks lat={latlng.lat} lng={latlng.lng} />
-
-        <a
-          href="/"
-          className="block text-center py-3 rounded-xl text-sm font-bold text-text bg-white border border-border transition-all active:scale-[0.97] shadow-md"
-        >
-          나도 뽑으러 가기
-        </a>
-      </div>
-    </div>
+        <div id={moreId} hidden={!expanded} className="mt-3 space-y-2 border-t border-border pt-3">
+          <p className="text-xs text-text-light [overflow-wrap:anywhere]">좌표 {point.lat.toFixed(6)}, {point.lng.toFixed(6)}</p>
+          <p className="text-xs leading-relaxed text-text-light">길찾기를 열어 이동 경로와 실제 출입 가능 여부를 확인해주세요.</p>
+        </div>
+      </section>
+    </main>
   )
 }
