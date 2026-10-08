@@ -18,7 +18,7 @@ const kakaoClient = createKakaoPlacesClient({
     const loaded: KakaoPlacesServices = {
       places: {
         keywordSearch: (query, callback, options) => places.keywordSearch(query, callback, options),
-        categorySearch: (code, callback, options) => places.categorySearch(code, callback, { ...options, sort: maps.services.SortBy.DISTANCE }),
+        categorySearch: (code, callback, options) => places.categorySearch(code, callback, { ...options, sort: 'rect' in options ? maps.services.SortBy.ACCURACY : maps.services.SortBy.DISTANCE }),
       },
       geocoder: {
         addressSearch: (query, callback) => geocoder.addressSearch(query, callback, { size: 5, page: 1, analyze_type: maps.services.AnalyzeType.SIMILAR }),
@@ -34,6 +34,7 @@ const kakaoClient = createKakaoPlacesClient({
 // reported instead of silently drawing from a different provider's place data.
 const client = usesKakaoMaps ? kakaoClient : photon
 export const reverseGeocode = client.reverse
+export const searchKakaoRegion = kakaoClient.searchRegion
 export const searchPlaces = client.search
 export async function addressAt(lat: number, lng: number, signal?: AbortSignal): Promise<string | null> {
   if (usesKakaoMaps) return kakaoClient.addressAt(lat, lng, signal)

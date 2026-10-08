@@ -1,7 +1,8 @@
 import type { PlaceCandidate } from './geocode-client.ts'
 import { getKakaoCategoryCode, kakaoDestinationCategories, type DestinationCategory, type KakaoDestinationCode } from './categories.ts'
-import { isLatLng, isRecord } from './validation.ts'
+import { isBounds, isLatLng, isRecord } from './validation.ts'
 import { placeMetadata } from './place-metadata.ts'
+import type { RectBounds } from '../types/index.ts'
 
 type ServiceCallback = (data: unknown, status: string) => void
 
@@ -12,7 +13,7 @@ export interface KakaoPlacesServices {
     keywordSearch(query: string, callback: ServiceCallback, options: { size: number }): void
     categorySearch(code: KakaoDestinationCode, callback: ServiceCallback, options: {
       x: number; y: number; radius: number; size: number; page: number
-    }): void
+    } | { rect: string; size: number; page: number }): void
   }
   geocoder: {
     addressSearch(query: string, callback: ServiceCallback): void
@@ -156,6 +157,19 @@ export function createKakaoPlacesClient(options: KakaoPlacesOptions) {
   }
 
   return {
+    async searchRegion(bounds: RectBounds, code: KakaoDestinationCode, page: number, signal?: AbortSignal): Promise<PlaceCandidate[]> {
+      if (!isBounds(bounds) || !kakaoDestinationCategories.includes(code) || !Number.isInteger(page) || page < 1 || page > 3) {
+        throw new Error('탐색 범위가 올바르지 않습니다.')
+      }
+      const rect = [bounds.minLng, bounds.minLat, bounds.maxLng, bounds.maxLat].join(',')
+      const data = await request(`region:${code}:${rect}:${page}`, (services, callback) => {
+        // No center or radius: the rectangle is the complete geographic filter.
+        services.places.categorySearch(code, callback, { rect, size: 15, page })
+      }, signal)
+      signal?.throwIfAborted()
+      return placeEntries(data, code).map(entry => entry.place)
+    },
+
     async search(query: string, signal?: AbortSignal): Promise<PlaceCandidate[]> {
       const term = query.trim()
       if (!term || term.length > 200) throw new Error('검색어를 1~200자로 입력해주세요.')

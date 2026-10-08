@@ -69,12 +69,8 @@ export default function RangeSelector({ userLocation, zoom, category, onCategory
   }, [])
 
   const valid = isPolygon(points)
-  const bounds = points.length ? getPolygonBounds(points) : null
-  const tooWide = bounds !== null && (bounds.maxLat - bounds.minLat > 2 || bounds.maxLng - bounds.minLng > 2)
   const error = points.length >= 3 && !valid
-    ? tooWide
-      ? '범위가 너무 넓어요. 마지막 점을 취소하고 더 가까이 찍어주세요.'
-      : '선이 교차하거나 한 줄로 이어졌어요. 마지막 점을 취소해 조정해주세요.'
+    ? '선이 교차하거나 한 줄로 이어졌어요. 마지막 점을 취소해 조정해주세요.'
     : null
   const instruction = points.length === 0
     ? '지도에 점을 3개 이상 찍어주세요. 끌어서 이동해요.'

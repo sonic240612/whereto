@@ -62,7 +62,6 @@ test('polygon limits reject invalid coordinates/extents and permit at most fifty
     [{ lat: Infinity, lng: 127 }, point(1, 0), point(0, 1)],
     [{ lat: '37', lng: 127 }, point(1, 0), point(0, 1)],
     [{ lat: 89, lng: 0 }, { lat: 89, lng: 1 }, { lat: 90, lng: 0 }],
-    [point(0, 0), point(2.1, 0), point(0, 1)],
   ]) assert.equal(isPolygon(invalid), false)
   assert.equal(isPolygon([{ lat: 0, lng: 0 }, { lat: 0, lng: 1 }, { lat: 1, lng: 0 }]), true)
   assert.throws(() => getPolygonBounds([]), /다각형/)

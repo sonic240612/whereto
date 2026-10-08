@@ -8,8 +8,9 @@ import KakaoPlaceLink from '../components/KakaoPlaceLink'
 import VisitForm from '../components/VisitForm'
 import CategoryBar from '../components/CategoryBar'
 import RangeSelector from '../components/RangeSelector'
-import { reverseGeocode } from '../lib/geocode'
+import { reverseGeocode, searchKakaoRegion } from '../lib/geocode'
 import { generateRandomCoord } from '../lib/random'
+import { generateAreaDestination, type DrawProgress } from '../lib/area-draw'
 import { createVisit } from '../lib/api'
 import { contains, parseBounds, parseResult } from '../lib/validation'
 import { containsPolygon, getPolygonBounds, isPolygon, parsePolygon, serializePolygon } from '../lib/polygon'
@@ -39,6 +40,7 @@ export default function Result() {
   }, [query, bounds, polygon, category])
   const [result, setResult] = useState<CoordResult | null>(restored)
   const [loading, setLoading] = useState(false)
+  const [progress, setProgress] = useState<DrawProgress>({ requests: 0, candidates: 0 })
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -131,13 +133,17 @@ export default function Result() {
     pending.current = true
     setResult(null)
     setLoading(true)
+    setProgress({ requests: 0, candidates: 0 })
     setError('')
     setShowForm(false)
     setExpanded(false)
     setShowLink(false)
     setNotice('')
     try {
-      const value = await generateRandomCoord(bounds, (lat, lng, signal) => reverseGeocode(lat, lng, signal, category), controller.signal, Math.random, category, polygon ?? undefined)
+      const value = usesKakaoMaps
+        ? await generateAreaDestination(bounds, searchKakaoRegion, { signal: controller.signal, category, polygon: polygon ?? undefined,
+          onProgress: value => { if (!controller.signal.aborted) setProgress(value) } })
+        : await generateRandomCoord(bounds, (lat, lng, signal) => reverseGeocode(lat, lng, signal, category), controller.signal, Math.random, category, polygon ?? undefined)
       if (controller.signal.aborted) return
       setResult(value)
       const next = new URLSearchParams(query)
@@ -153,6 +159,14 @@ export default function Result() {
     } finally {
       if (!controller.signal.aborted) { setLoading(false); pending.current = false }
     }
+  }
+
+  const handleCancelDraw = () => {
+    drawRequest.current?.abort()
+    pending.current = false
+    setLoading(false)
+    setResult(restored)
+    setNotice('검색을 취소했어요.')
   }
 
   const handleCategoryChange = (nextCategory: DestinationCategory) => {
@@ -197,7 +211,7 @@ export default function Result() {
   if (!bounds) return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-4 p-6 text-center">
       <h1 className="text-xl font-bold">탐색 범위를 확인해주세요</h1>
-      <p>유효한 범위를 선택하거나 지도를 확대해 다시 시작해주세요.</p>
+      <p>유효한 범위를 선택해 다시 시작해주세요.</p>
       <Link to={homeUrl} className="rounded-xl bg-primary px-6 py-3 font-bold text-white">처음으로 돌아가기</Link>
     </main>
   )
@@ -223,9 +237,10 @@ export default function Result() {
         {error && <div role="alert" className="mt-2 rounded-xl bg-red-50 p-3 text-sm text-red-800 [overflow-wrap:anywhere]">{error}</div>}
         <div className="mt-3 grid grid-cols-2 items-end gap-2">
           {result && <><KakaoPlaceLink place={result} compact /><NavLinks {...result} compact /></>}
-          <button data-glass="action" data-glass-tone={!result ? 'accent' : undefined} ref={drawTrigger} type="button" onClick={handleDraw} disabled={loading} className={`flex min-h-11 min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-xl border border-border px-1.5 py-2.5 text-xs font-semibold disabled:opacity-40 sm:text-sm ${!result ? 'bg-primary-dark text-white' : ''}`}><RefreshCw size={16} className="hidden shrink-0 sm:block" aria-hidden="true" />{loading ? '뽑는 중…' : error ? '다시 시도' : result ? '다시 뽑기' : '뽑기'}</button>
+          <button data-glass="action" data-glass-tone={!result ? 'accent' : undefined} ref={drawTrigger} type="button" onClick={loading ? handleCancelDraw : handleDraw} className={`flex min-h-11 min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-xl border border-border px-1.5 py-2.5 text-xs font-semibold sm:text-sm ${!result ? 'bg-primary-dark text-white' : ''}`}><RefreshCw size={16} className="hidden shrink-0 sm:block" aria-hidden="true" />{loading ? '검색 취소' : error ? '다시 시도' : result ? '다시 뽑기' : '뽑기'}</button>
           <button data-glass="action" ref={rangeTrigger} type="button" onClick={handleReselect} className="flex min-h-11 min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-xl border border-border px-1.5 py-2.5 text-xs font-semibold hover:bg-bg-secondary sm:text-sm"><ScanLine size={16} className="hidden shrink-0 sm:block" aria-hidden="true" />영역 재지정</button>
         </div>
+        {loading && usesKakaoMaps && <p role="status" className="mt-2 text-xs text-text-light">여러 구역에서 찾고 있어요 · 검색 {progress.requests}회 · 후보 {progress.candidates}곳</p>}
         <div id={moreId} hidden={!expanded} className="mt-3 space-y-3 border-t border-border pt-3">
           {result && <>
             <div className="grid grid-cols-2 gap-2">
@@ -234,7 +249,7 @@ export default function Result() {
             </div>
             <details open={showLink} onToggle={event => setShowLink(event.currentTarget.open)} className="text-xs text-text-light"><summary className="cursor-pointer py-3">공유 링크 직접 복사</summary><input aria-label="공유 링크" readOnly value={getShareUrl(result, window.location.origin)} onFocus={event => event.target.select()} className="min-w-0 w-full rounded-lg border border-border p-2" /></details>
             <p className="text-xs leading-relaxed text-text-light">{usesKakaoMaps
-              ? category === 'all' ? '카카오맵의 18개 분류 중 일부를 무작위로 조회해 범위 안의 장소를 뽑습니다. 실제 영업·출입 여부는 방문 전에 확인해주세요.' : `카카오맵에 ${categoryLabels[category]} 분류로 등록된 곳에서 뽑습니다. 실제 영업·출입 여부는 방문 전에 확인해주세요.`
+              ? category === 'all' ? '여러 구역과 카테고리에서 찾은 후보 중 뽑습니다. 범위 안 모든 장소의 당첨 확률이 같지는 않아요. 실제 영업·출입 여부는 방문 전에 확인해주세요.' : `카카오맵에서 찾은 범위 안 ${categoryLabels[category]} 후보 중 뽑습니다. 실제 영업·출입 여부는 방문 전에 확인해주세요.`
               : '선택 범위와 카테고리에 맞게 지도에 등록된 장소를 추천합니다. 실제 출입 가능 여부는 방문 전에 확인해주세요.'}</p>
           </>}
           <Link data-glass="action" to="/gallery" className="relative flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-border bg-bg-secondary px-3 py-2.5 text-sm font-semibold shadow-sm hover:bg-border/60">

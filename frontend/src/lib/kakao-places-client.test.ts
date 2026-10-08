@@ -22,6 +22,31 @@ function services(): KakaoPlacesServices {
   }
 }
 
+test('region searches use the whole rectangle without a radius and isolate category/page/region caches', async () => {
+  const sdk = services()
+  let calls = 0
+  sdk.places.categorySearch = (code, callback, options) => {
+    calls++
+    assert.ok('rect' in options)
+    assert.equal('radius' in options, false)
+    assert.equal('x' in options, false)
+    assert.equal(options.size, 15)
+    callback([{ ...restaurant, category_group_code: code }], 'OK')
+  }
+  const client = createKakaoPlacesClient({ getServices: () => sdk, intervalMs: 0 })
+  const area = { minLat: 33, maxLat: 39, minLng: 124, maxLng: 132 }
+  assert.equal((await client.searchRegion(area, 'FD6', 1))[0].kakaoPlaceId, '123456789')
+  await client.searchRegion(area, 'FD6', 1)
+  assert.equal(calls, 1)
+  await client.searchRegion(area, 'FD6', 2)
+  await client.searchRegion(area, 'CE7', 1)
+  await client.searchRegion({ ...area, minLat: 32 }, 'FD6', 1)
+  assert.equal(calls, 4)
+  await assert.rejects(client.searchRegion({ ...area, maxLng: 181 }, 'FD6', 1), /범위/)
+  await assert.rejects(client.searchRegion(area, 'FD6', 4), /범위/)
+  assert.equal(calls, 4)
+})
+
 test('restaurant lookup uses only FD6 and preserves actual Kakao category and coordinates', async () => {
   const sdk = services()
   let calls = 0

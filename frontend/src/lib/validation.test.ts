@@ -10,10 +10,11 @@ test('coordinates accept equator/prime meridian but reject invalid and partial n
     assert.equal(parseLatLng(new URLSearchParams(query)), null)
   }
 })
-test('bounds require nonzero, ordered and reasonably sized geographic area', () => {
+test('bounds allow any map-sized geographic area but require valid ordered coordinates', () => {
   const good = {minLat:37,maxLat:38,minLng:126,maxLng:127}
   assert.equal(isBounds(good), true)
-  for (const bad of [{...good,maxLat:37},{...good,minLng:128},{...good,minLat:-90},{...good,maxLng:181},{...good,maxLat:Infinity},{...good,maxLat:80}]) {
+  assert.equal(isBounds({ minLat: -85, maxLat: 85, minLng: -180, maxLng: 180 }), true)
+  for (const bad of [{...good,maxLat:37},{...good,minLng:128},{...good,minLat:-90},{...good,maxLng:181},{...good,maxLat:Infinity}]) {
     assert.equal(isBounds(bad), false)
   }
   assert.deepEqual(parseBounds(new URLSearchParams('minLat=37&maxLat=38&minLng=126&maxLng=127')), good)

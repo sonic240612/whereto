@@ -20,7 +20,6 @@ export function isBounds(value: unknown): value is RectBounds {
     && typeof minLng === 'number' && typeof maxLng === 'number'
     && minLat >= -85.05112878 && maxLat <= 85.05112878
     && minLng >= -180 && maxLng <= 180 && minLat < maxLat && minLng < maxLng
-    && maxLat - minLat <= 2 && maxLng - minLng <= 2
 }
 
 export function parseNumber(value: string | null): number {

@@ -96,6 +96,16 @@ export function parsePolygon(value: string | null): LatLng[] | null {
   } catch { return null }
 }
 
+// Retain narrow/concave intersections even when no corner lies inside the other shape.
+export function polygonIntersectsBounds(points: readonly LatLng[], bounds: RectBounds): boolean {
+  const corners = [
+    { lat: bounds.minLat, lng: bounds.minLng }, { lat: bounds.minLat, lng: bounds.maxLng },
+    { lat: bounds.maxLat, lng: bounds.maxLng }, { lat: bounds.maxLat, lng: bounds.minLng },
+  ]
+  return points.some(point => contains(bounds, point)) || corners.some(point => containsPolygon(points, point))
+    || points.some((point, i) => corners.some((corner, j) => intersects(point, points[(i + 1) % points.length], corner, corners[(j + 1) % 4])))
+}
+
 export function serializePolygon(points: readonly LatLng[]): string {
   if (!isPolygon(points)) throw new Error(INVALID_POLYGON)
   return JSON.stringify(points.map(point => [point.lat, point.lng]))
