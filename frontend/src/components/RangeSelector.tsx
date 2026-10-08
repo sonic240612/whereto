@@ -1,10 +1,11 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
-import { X, Check, Undo2 } from 'lucide-react'
+import { useState, useCallback, useRef, useEffect, useId } from 'react'
+import { X, Check, Undo2, LocateFixed, Loader2 } from 'lucide-react'
 import MapView from './MapView'
 import HomeLink from './HomeLink'
 import DesignSettings from './DesignSettings'
 import CategoryBar from './CategoryBar'
 import useDialog from '../hooks/useDialog'
+import useGeolocation from '../hooks/useGeolocation'
 import { categoryLabels, type DestinationCategory } from '../lib/categories'
 import { getPolygonBounds, isPolygon, MAX_POLYGON_POINTS } from '../lib/polygon'
 import { isBounds, isLatLng } from '../lib/validation'
@@ -35,6 +36,9 @@ function getInitialPoints(polygon?: readonly LatLng[] | null, bounds?: RectBound
 export default function RangeSelector({ userLocation, zoom, category, onCategoryChange, onConfirm, onCancel, initialPolygon, initialBounds }: RangeSelectorProps) {
   const [points, setPoints] = useState<LatLng[]>(() => getInitialPoints(initialPolygon, initialBounds))
   const [dockInset, setDockInset] = useState(134)
+  const { location, error: geoError, loading: locating, retry } = useGeolocation({ automatic: false })
+  const [locationView, setLocationView] = useState<LatLng | null>(null)
+  const locationStatusId = useId()
   // Selection stays in the user's viewport as vertices change. A restored range
   // is fitted only when the map first mounts, including in selection mode.
   const initialView = useRef({
@@ -44,6 +48,16 @@ export default function RangeSelector({ userLocation, zoom, category, onCategory
   })
   const dialogRef = useDialog(onCancel)
   const dockRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (location) setLocationView({ ...location })
+  }, [location])
+
+  const locate = () => {
+    // Reapply the 100 m view on repeat clicks without changing drafted vertices.
+    if (location) setLocationView({ ...location })
+    retry(true)
+  }
 
   useEffect(() => {
     const dock = dockRef.current
@@ -86,9 +100,12 @@ export default function RangeSelector({ userLocation, zoom, category, onCategory
 
   return (
     <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="range-title" aria-describedby="range-instructions" tabIndex={-1} className="fixed inset-0 z-40 overflow-hidden bg-bg">
-      <MapView center={initialView.current.center} zoom={initialView.current.zoom} bounds={initialView.current.bounds} polygon={points} selecting onPointAdd={handlePointAdd} topInset={120} bottomInset={dockInset} className="absolute inset-0" />
+      <MapView center={locationView ?? initialView.current.center} zoom={locationView ? 15 : initialView.current.zoom} bounds={initialView.current.bounds} polygon={points} selecting onPointAdd={handlePointAdd} topInset={120} bottomInset={dockInset} className="absolute inset-0" />
 
       <HomeLink onClick={onCancel} />
+      <button data-glass="control" type="button" onClick={locate} disabled={locating} aria-busy={locating} aria-label={locating ? '현재 위치 확인 중' : '내 위치로 이동'} aria-describedby={locating || geoError ? locationStatusId : undefined} title="내 위치로 이동" className="fixed right-[116px] top-[calc(env(safe-area-inset-top)+8px)] z-30 flex h-11 w-11 items-center justify-center rounded-2xl border border-white/80 bg-white/95 text-text shadow-md backdrop-blur hover:bg-bg-secondary disabled:opacity-60">
+        {locating ? <Loader2 size={19} className="animate-spin" aria-hidden="true" /> : <LocateFixed size={19} aria-hidden="true" />}
+      </button>
       <DesignSettings className="fixed right-[64px] top-[calc(env(safe-area-inset-top)+8px)] z-30" />
       <header className="pointer-events-none absolute inset-x-3 top-[calc(env(safe-area-inset-top)+8px)] z-20 flex h-11 items-center justify-end gap-3">
         <h2 id="range-title" className="sr-only">점을 찍어 탐색 범위 지정</h2>
@@ -102,6 +119,7 @@ export default function RangeSelector({ userLocation, zoom, category, onCategory
           <div aria-live="polite" aria-atomic="true" className="mb-1.5 px-1 text-[11px] leading-4">
             <p className="font-semibold text-text">점 {points.length}/{MAX_POLYGON_POINTS} · {categoryLabels[category]}</p>
             {error ? <p role="alert" className="text-red-700">{error}</p> : <p className="text-text-light">{instruction}</p>}
+            {(locating || geoError) && <p id={locationStatusId} role={geoError ? 'alert' : 'status'} className={geoError ? 'mt-1 text-amber-800' : 'mt-1 text-text-light'}>{locating ? '현재 위치를 확인하고 있어요. 찍어둔 점은 유지돼요.' : geoError}</p>}
           </div>
           <div className="flex gap-1.5">
             <button data-glass="action" data-glass-tone="accent" type="button" onClick={confirmSelection} disabled={!valid} className="flex h-11 min-w-0 flex-1 items-center justify-center gap-1 rounded-xl bg-primary-dark px-1 text-sm font-bold text-white active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-gray-300">

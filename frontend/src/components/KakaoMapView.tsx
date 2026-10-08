@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { loadKakaoMaps } from '../lib/kakao-sdk'
 import { isBounds, isLatLng } from '../lib/validation'
+import { constrainMapViewport, KAKAO_NAVIGATION_BOUNDS } from '../lib/map-navigation'
 import type { LatLng, RectBounds } from '../types'
 import { createVertexElement, getMapPadding, listenForMapTap, type MapViewProps } from './map-view-types'
 
@@ -8,7 +9,7 @@ const DEFAULT_CENTER: LatLng = { lat: 37.5665, lng: 126.978 }
 const RECTANGLE_STYLE = { strokeColor: '#e05555', strokeWeight: 2, strokeOpacity: 1, fillColor: '#FF6B6B', fillOpacity: 0.15 }
 const MARKER_HTML = '<svg xmlns="http://www.w3.org/2000/svg" width="36" height="44" viewBox="0 0 36 44" aria-hidden="true"><path d="M18 42S2 27 2 18a16 16 0 1 1 32 0c0 9-16 24-16 24Z" fill="#e05555" stroke="white" stroke-width="3"/><circle cx="18" cy="18" r="6" fill="white"/></svg>'
 
-type MapSession = { map: kakao.maps.Map; maps: typeof kakao.maps; disposed: boolean; stableCenter: kakao.maps.LatLng }
+type MapSession = { map: kakao.maps.Map; maps: typeof kakao.maps; disposed: boolean; stableCenter: kakao.maps.LatLng; maxLevel: number }
 type ViewState = Pick<MapViewProps, 'center' | 'zoom' | 'bounds' | 'marker' | 'selecting' | 'topInset' | 'bottomInset'> & { session: MapSession; hasPolygon: boolean }
 
 function toLevel(zoom = 15) {
@@ -44,6 +45,7 @@ export default function KakaoMapView({
   const [session, setSession] = useState<MapSession | null>(null)
   const [attempt, setAttempt] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [zoomState, setZoomState] = useState({ level: 4, maxLevel: 14 })
   const hasPolygon = polygon != null
 
   useEffect(() => {
@@ -65,16 +67,62 @@ export default function KakaoMapView({
         center: new maps.LatLng(initial.lat, initial.lng), level: toLevel(initialView.current.zoom),
         keyboardShortcuts: false, disableDoubleClickZoom: true, tileAnimation: false,
       })
-      const next: MapSession = { map, maps, disposed: false, stableCenter: map.getCenter() }
+      const next: MapSession = { map, maps, disposed: false, stableCenter: map.getCenter(), maxLevel: 14 }
+      let correcting = false
+      let viewportFrame = 0
+      const navigation = KAKAO_NAVIGATION_BOUNDS
+      const corners = [
+        new maps.LatLng(navigation.maxLat, navigation.minLng), new maps.LatLng(navigation.maxLat, navigation.maxLng),
+        new maps.LatLng(navigation.minLat, navigation.minLng), new maps.LatLng(navigation.minLat, navigation.maxLng),
+      ]
       let observer: ResizeObserver | undefined
       let layoutWidth = host.clientWidth
       let layoutHeight = host.clientHeight
       const layoutChanged = () => host.clientWidth !== layoutWidth || host.clientHeight !== layoutHeight
       const publish = () => {
-        if (next.disposed || layoutChanged()) return
+        if (next.disposed || layoutChanged() || correcting) return
+        correcting = true
+        try {
+          const current = map.getCenter()
+          const lat = Math.max(navigation.minLat, Math.min(navigation.maxLat, current.getLat()))
+          const lng = Math.max(navigation.minLng, Math.min(navigation.maxLng, current.getLng()))
+          if (lat !== current.getLat() || lng !== current.getLng()) map.setCenter(new maps.LatLng(lat, lng))
+          for (let i = 0; i < 3; i++) {
+            const level = map.getLevel()
+            const projection = map.getProjection()
+            const [nw, ne, sw, se] = corners.map(point => projection.containerPointFromCoords(point))
+            const limits = constrainMapViewport({
+              left: Math.max(nw.x, sw.x), right: Math.min(ne.x, se.x),
+              top: Math.max(nw.y, ne.y), bottom: Math.min(sw.y, se.y),
+            }, host.clientWidth, host.clientHeight, level)
+            if (!limits) break
+            if (next.maxLevel !== limits.maxLevel) {
+              next.maxLevel = limits.maxLevel
+              map.setMaxLevel(limits.maxLevel)
+            }
+            if (map.getLevel() !== level) continue
+            if (map.getLevel() > limits.maxLevel) {
+              map.setLevel(limits.maxLevel, { animate: false })
+              continue
+            }
+            if (Math.abs(limits.dx) > 0.5 || Math.abs(limits.dy) > 0.5) {
+              const middle = projection.containerPointFromCoords(map.getCenter())
+              map.setCenter(projection.coordsFromContainerPoint(new maps.Point(middle.x + limits.dx, middle.y + limits.dy)))
+            }
+            break
+          }
+        } finally { correcting = false }
         const point = map.getCenter()
         next.stableCenter = point
+        setZoomState(previous => previous.level === map.getLevel() && previous.maxLevel === next.maxLevel
+          ? previous : { level: map.getLevel(), maxLevel: next.maxLevel })
         callbacks.current.onViewportChange?.({ lat: point.getLat(), lng: point.getLng() }, 19 - map.getLevel(), fromBounds(map.getBounds()))
+      }
+      // Kakao emits center_changed while processing its camera update. Correct
+      // after that update so a nested setCenter cannot leave tiles out of sync.
+      const schedulePublish = () => {
+        if (next.disposed || correcting || viewportFrame) return
+        viewportFrame = requestAnimationFrame(() => { viewportFrame = 0; publish() })
       }
       const imageError = (event: Event) => {
         if (!next.disposed && event.target instanceof HTMLImageElement) setError('카카오 지도 이미지를 불러오지 못했습니다. 인터넷 연결을 확인하고 다시 시도해주세요.')
@@ -83,10 +131,11 @@ export default function KakaoMapView({
         if (next.disposed) return
         next.disposed = true
         observer?.disconnect()
+        cancelAnimationFrame(viewportFrame)
         host.removeEventListener('error', imageError, true)
-        maps.event.removeListener(map, 'idle', publish)
-        maps.event.removeListener(map, 'center_changed', publish)
-        maps.event.removeListener(map, 'zoom_changed', publish)
+        maps.event.removeListener(map, 'idle', schedulePublish)
+        maps.event.removeListener(map, 'center_changed', schedulePublish)
+        maps.event.removeListener(map, 'zoom_changed', schedulePublish)
         map.setDraggable(false)
         map.setZoomable(false)
         map.setKeyboardShortcuts(false)
@@ -104,10 +153,10 @@ export default function KakaoMapView({
       map.setMinLevel(1)
       map.setMaxLevel(14)
       map.setCopyrightPosition(maps.CopyrightPosition.BOTTOMLEFT, false)
-      maps.event.addListener(map, 'idle', publish)
-      // Programmatic setCenter/setLevel calls need not emit idle; publish their changes directly.
-      maps.event.addListener(map, 'center_changed', publish)
-      maps.event.addListener(map, 'zoom_changed', publish)
+      maps.event.addListener(map, 'idle', schedulePublish)
+      // Programmatic setCenter/setLevel calls need not emit idle; also observe their camera events.
+      maps.event.addListener(map, 'center_changed', schedulePublish)
+      maps.event.addListener(map, 'zoom_changed', schedulePublish)
       host.addEventListener('error', imageError, true)
       observer = new ResizeObserver(() => {
         if (next.disposed || !layoutChanged()) return
@@ -247,7 +296,7 @@ export default function KakaoMapView({
       if (event.key === '+' || event.key === '=' || event.key === '-' || event.key === '−') {
         event.preventDefault()
         tap?.cancel()
-        map.setLevel(Math.max(1, Math.min(14, map.getLevel() + (event.key === '-' || event.key === '−' ? 1 : -1))), { animate: false })
+        map.setLevel(Math.max(1, Math.min(session.maxLevel, map.getLevel() + (event.key === '-' || event.key === '−' ? 1 : -1))), { animate: false })
       } else if (delta[event.key]) {
         event.preventDefault()
         tap?.cancel()
@@ -277,7 +326,7 @@ export default function KakaoMapView({
   }, [session, selecting])
 
   const changeZoom = (difference: number) => {
-    if (session && !session.disposed) session.map.setLevel(Math.max(1, Math.min(14, session.map.getLevel() + difference)), { animate: false })
+    if (session && !session.disposed) session.map.setLevel(Math.max(1, Math.min(session.maxLevel, session.map.getLevel() + difference)), { animate: false })
   }
   const bannerTop = `min(calc(env(safe-area-inset-top, 0px) + ${Number.isFinite(topInset) ? Math.max(0, topInset) : 80}px), max(0px, calc(100% - 160px)))`
   return (
@@ -285,8 +334,8 @@ export default function KakaoMapView({
       <div className="relative h-full w-full">
       <div ref={hostRef} tabIndex={0} role="region" aria-label={selecting ? '카카오 지도. 클릭해 꼭짓점 추가. 방향키로 이동하고 Enter 또는 Space로 중심점 추가' : '카카오 지도. 방향키로 이동하고 더하기와 빼기 키로 확대 또는 축소'} className="absolute inset-0 focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-primary-dark" />
       {session && !error && <div data-glass="control" aria-label="지도 확대 및 축소" className="absolute right-3 z-10 flex flex-col overflow-hidden rounded-xl bg-white shadow-lg" style={{ bottom: `min(${Math.max(0, bottomInset) + 32}px, calc(100% - 176px))` }}>
-        <button type="button" aria-label="지도 확대" onClick={() => changeZoom(-1)} className="h-11 w-11 border-b border-border text-2xl text-text hover:bg-bg-secondary">+</button>
-        <button type="button" aria-label="지도 축소" onClick={() => changeZoom(1)} className="h-11 w-11 text-2xl text-text hover:bg-bg-secondary">−</button>
+        <button type="button" aria-label="지도 확대" disabled={zoomState.level <= 1} onClick={() => changeZoom(-1)} className="h-11 w-11 border-b border-border text-2xl text-text hover:bg-bg-secondary disabled:cursor-default disabled:opacity-35">+</button>
+        <button type="button" aria-label="지도 축소" disabled={zoomState.level >= zoomState.maxLevel} onClick={() => changeZoom(1)} className="h-11 w-11 text-2xl text-text hover:bg-bg-secondary disabled:cursor-default disabled:opacity-35">−</button>
       </div>}
       {!session && !error && <div role="status" style={{ top: bannerTop }} className="pointer-events-none absolute inset-x-3 z-10 mx-auto max-w-sm rounded-xl bg-white/95 p-3 text-center text-sm text-text shadow">카카오 지도를 불러오는 중이에요.</div>}
       {error && <div role="alert" style={{ top: bannerTop, maxHeight: `max(0px, calc(100% - ${bannerTop} - 24px))` }} className="absolute inset-x-3 z-10 mx-auto max-w-sm overflow-y-auto rounded-xl bg-white p-3 text-sm text-text shadow-lg">

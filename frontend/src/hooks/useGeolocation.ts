@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { requestGeolocation } from '../lib/geolocation-client'
 import type { LatLng } from '../types'
 
-export default function useGeolocation() {
+export default function useGeolocation({ automatic = true }: { automatic?: boolean } = {}) {
   const [location, setLocation] = useState<LatLng | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -31,12 +31,12 @@ export default function useGeolocation() {
   }, [])
 
   useEffect(() => {
-    retry()
+    if (automatic) retry()
     return () => {
       activeRequest.current?.abort()
       activeRequest.current = null
     }
-  }, [retry])
+  }, [retry, automatic])
 
   return { location, error, loading, retry }
 }
