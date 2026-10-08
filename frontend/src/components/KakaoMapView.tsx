@@ -140,7 +140,10 @@ export default function KakaoMapView({
     if (!host) return
     const previous = previousView.current
     const first = previous?.session !== session
-    const changedCenter = first || !samePoint(previous?.center, center)
+    // A fresh center object is an explicit search/GPS navigation request, even
+    // when its coordinates match the previous request. Ordinary viewport
+    // updates retain the same object, so dragging still survives other renders.
+    const changedCenter = first || previous?.center !== center
     const changedBounds = first || !sameBounds(previous?.bounds, bounds)
     const changedMarker = first || !samePoint(previous?.marker, marker)
     const changedInset = first || previous?.topInset !== topInset || previous?.bottomInset !== bottomInset
@@ -171,7 +174,11 @@ export default function KakaoMapView({
       session.stableCenter = toLatLng(center)
       map.setCenter(session.stableCenter)
     }
-    if (first || previous?.zoom !== zoom) map.setLevel(toLevel(zoom), { animate: false })
+    // Reapply an explicit zoom on every navigation request, including repeat GPS
+    // clicks after manual zooming. An omitted zoom preserves the current scale.
+    if (first || (Number.isFinite(zoom) && (changedCenter || previous?.zoom !== zoom))) {
+      map.setLevel(toLevel(zoom), { animate: false })
+    }
     const fitBounds = () => {
       if (!sdkBounds || session.disposed) return
       const safeTop = parseFloat(getComputedStyle(host).getPropertyValue('--map-safe-top')) || 0

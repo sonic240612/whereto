@@ -2,6 +2,8 @@ name: Verify
 on:
   push:
   pull_request:
+permissions:
+  contents: read
 jobs:
   frontend:
     runs-on: ubuntu-latest
@@ -16,6 +18,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      - run: npm audit --audit-level=low
       - run: npm run lint
       - run: npm test
       - run: npm run build
@@ -32,6 +35,7 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
+      - run: npm audit --audit-level=low
       - run: npm run build
       - run: npm test
       - run: npm run typecheck

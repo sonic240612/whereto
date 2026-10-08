@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
-import { beforeEach, test } from 'node:test'
-import { createVisit, deleteVisit, exportVisits, fetchVisits, importVisits, resetVisits, restoreVisit, StorageError, updateVisit } from './api.ts'
+import { afterEach, beforeEach, test } from 'node:test'
+import { createVisit, deleteVisit, exportVisits, fetchVisits, importVisits, resetVisits, restoreVisit, StorageError, updateVisit, MAX_VISIT_BACKUP_BYTES } from './api.ts'
 import type { StorageErrorCode } from './api.ts'
 import type { Visit } from '../types/index.ts'
 
@@ -26,9 +26,15 @@ class MemoryStorage implements Storage {
 }
 
 let storage: MemoryStorage
+const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator')
 beforeEach(() => {
   storage = new MemoryStorage()
   Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable: true, writable: true })
+  Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true })
+})
+afterEach(() => {
+  if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator)
+  else Reflect.deleteProperty(globalThis, 'navigator')
 })
 
 const hasCode = (code: StorageErrorCode) => (error: unknown) => {
@@ -110,9 +116,26 @@ test('unavailable browser storage is a distinct actionable error', async () => {
 
 test('editing preserves coordinates, ID and creation time', async () => {
   storage.setItem(key, JSON.stringify([record]))
-  const updated = await updateVisit(record.id, { name: ' 수정한 장소 ', address: record.address, rating: 2, note: ' 새 메모 ' })
+  const updated = await updateVisit(record.id, { name: ' 수정한 장소 ', address: record.address, rating: 2, note: ' 새 메모 ' }, record)
   assert.deepEqual(updated, { ...record, name: '수정한 장소', rating: 2, note: '새 메모' })
-  await assert.rejects(updateVisit('missing', input), hasCode('conflict'))
+  await assert.rejects(updateVisit('missing', input, { ...record, id: 'missing' }), hasCode('conflict'))
+})
+
+test('stale editor cannot overwrite changes from another tab and its draft is untouched', async () => {
+  storage.setItem(key, JSON.stringify([record]))
+  const snapshot = (await fetchVisits())[0]
+  const latest = await updateVisit(record.id, { ...input, note: '다른 창에서 저장한 메모' }, snapshot)
+  const draft = { name: snapshot.name ?? '', address: snapshot.address, rating: 2, note: snapshot.note ?? '' }
+  const originalDraft = { ...draft }
+  await assert.rejects(updateVisit(record.id, draft, snapshot), hasCode('conflict'))
+  assert.deepEqual((await fetchVisits())[0], latest)
+  assert.deepEqual(draft, originalDraft)
+})
+
+test('equivalent normalized dates do not cause an edit conflict', async () => {
+  storage.setItem(key, JSON.stringify([record]))
+  const updated = await updateVisit(record.id, input, { ...record, createdAt: '2026-10-08T10:00:00Z' })
+  assert.equal(updated.rating, input.rating)
 })
 
 test('delete and undo restore the exact record without duplicating repeated undo', async () => {
@@ -145,6 +168,65 @@ test('export and reimport are lossless and skip existing or equivalent records',
   assert.deepEqual(await importVisits(JSON.stringify([{ ...record, id: 'different-id' }])), { added: 0, skipped: 1 })
 })
 
+test('Korean backups larger than the old 2MB file limit round-trip without data loss', async () => {
+  for (let index = 0; index < 70; index++) {
+    await createVisit({ ...input, name: `긴 메모 ${index}`, note: '가'.repeat(10_000) })
+  }
+  const original = await fetchVisits()
+  const backup = await exportVisits()
+  assert.ok(new Blob([backup]).size > 2_000_000)
+  assert.ok(new Blob([backup]).size <= MAX_VISIT_BACKUP_BYTES)
+  assert.equal(backup, storage.getItem(key))
+  storage.clear()
+  assert.deepEqual(await importVisits(backup), { added: 70, skipped: 0 })
+  assert.deepEqual(await fetchVisits(), original)
+})
+
+test('near-2MB legacy and pretty-printed v1 backups can be exported and reimported', async () => {
+  const original = Array.from({ length: 199 }, (_, index) => ({
+    ...record, id: `backup-${index}`, name: `장소 ${index}`, note: 'x'.repeat(9800),
+  }))
+  const oldBackup = JSON.stringify({ version: 1, exportedAt: '2026-10-09T00:00:00Z', visits: original }, null, 2)
+  assert.ok(new Blob([oldBackup]).size > 2_000_000)
+  await importVisits(oldBackup)
+  const backup = await exportVisits()
+  storage.clear()
+  await importVisits(backup)
+  assert.deepEqual(await fetchVisits(), original)
+})
+
+test('import limit counts UTF-8 bytes rather than JavaScript characters', async () => {
+  const saved = JSON.stringify([record])
+  storage.setItem(key, saved)
+  const oversized = '가'.repeat(Math.floor(MAX_VISIT_BACKUP_BYTES / 3) + 1)
+  assert.ok(oversized.length < MAX_VISIT_BACKUP_BYTES)
+  await assert.rejects(importVisits(oversized), error => {
+    assert.ok(error instanceof StorageError)
+    assert.equal(error.code, 'invalid')
+    assert.match(error.message, /파일이 너무 큽니다/)
+    return true
+  })
+  assert.equal(storage.getItem(key), saved)
+})
+
+test('merging individually valid backups cannot create a collection beyond the backup limit', async () => {
+  const batch = (prefix: string) => JSON.stringify({ version: 1, visits: Array.from({ length: 400 }, (_, index) => ({
+    ...record, id: `${prefix}-${index}`, name: `${prefix} ${index}`, note: '가'.repeat(10_000),
+  })) })
+  const first = batch('first'), second = batch('second')
+  assert.ok(new Blob([first]).size < MAX_VISIT_BACKUP_BYTES)
+  assert.ok(new Blob([second]).size < MAX_VISIT_BACKUP_BYTES)
+  await importVisits(first)
+  const saved = storage.getItem(key)
+  await assert.rejects(importVisits(second), hasCode('quota'))
+  assert.equal(storage.getItem(key), saved)
+  const backup = await exportVisits()
+  assert.ok(new Blob([backup]).size <= MAX_VISIT_BACKUP_BYTES)
+  storage.clear()
+  await importVisits(backup)
+  assert.equal((await fetchVisits()).length, 400)
+})
+
 test('importing different contents with an existing ID keeps both records', async () => {
   storage.setItem(key, JSON.stringify([record]))
   assert.deepEqual(await importVisits(JSON.stringify([{ ...record, note: '다른 기기의 메모' }])), { added: 1, skipped: 0 })
@@ -160,7 +242,7 @@ test('invalid imports never partially merge or change saved records', async () =
   storage.setItem(key, raw)
   await assert.rejects(importVisits(JSON.stringify([record, { ...record, id: 'bad', lng: 200 }])), hasCode('invalid'))
   await assert.rejects(importVisits('['), hasCode('invalid'))
-  await assert.rejects(importVisits(' '.repeat(2_000_001)), hasCode('invalid'))
+  await assert.rejects(importVisits(' '.repeat(MAX_VISIT_BACKUP_BYTES + 1)), hasCode('invalid'))
   assert.equal(storage.getItem(key), raw)
 })
 
@@ -173,4 +255,43 @@ test('reset requires the same snapshot that the user reviewed', async () => {
   storage.setItem(key, raw)
   await resetVisits(raw)
   assert.deepEqual(await fetchVisits(), [])
+})
+
+test('all mutations hold the same exclusive Web Lock through their storage write', async () => {
+  let held = false
+  let queue: Promise<unknown> = Promise.resolve()
+  const requests: string[] = []
+  const originalWrite = storage.setItem.bind(storage)
+  storage.setItem = (name, value) => { assert.equal(held, true); originalWrite(name, value) }
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { locks: {
+    request(name: string, options: { mode: string }, operation: () => unknown) {
+      assert.equal(options.mode, 'exclusive')
+      requests.push(name)
+      const pending = queue.then(() => {
+        assert.equal(held, false)
+        held = true
+        try { return operation() } finally { held = false }
+      })
+      queue = pending.catch(() => undefined)
+      return pending
+    },
+  } } })
+  const [first] = await Promise.all([createVisit(input), createVisit({ ...input, name: '다른 창의 기록' })])
+  const updated = await updateVisit(first.id, { ...input, note: '수정' }, first)
+  assert.deepEqual(await deleteVisit(first.id), updated)
+  await restoreVisit(updated)
+  await importVisits(JSON.stringify([record]))
+  await resetVisits(storage.getItem(key)!)
+  assert.deepEqual(await fetchVisits(), [])
+  assert.deepEqual(requests, Array(7).fill(key))
+})
+
+test('lock acquisition failure leaves storage unchanged instead of writing without the lock', async () => {
+  const saved = JSON.stringify([record])
+  storage.setItem(key, saved)
+  Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { locks: {
+    request: async () => { throw new Error('lock unavailable') },
+  } } })
+  await assert.rejects(createVisit(input), hasCode('unavailable'))
+  assert.equal(storage.getItem(key), saved)
 })

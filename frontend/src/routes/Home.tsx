@@ -13,7 +13,7 @@ import { getPolygonBounds, isPolygon, serializePolygon } from '../lib/polygon'
 import { parseDestinationCategory, type DestinationCategory } from '../lib/categories'
 import type { LatLng } from '../types'
 
-const DEFAULT_ZOOM = 15
+const DEFAULT_ZOOM = 15 // Kakao level 4: 100 m scale.
 const DEFAULT_CENTER: LatLng = { lat: 37.5665, lng: 126.978 }
 const mapButtonClass = 'pointer-events-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/80 bg-white/95 text-text shadow-md backdrop-blur transition-colors hover:bg-bg-secondary disabled:opacity-60'
 
@@ -24,6 +24,7 @@ export default function Home() {
   const { location: userLocation, error: geoError, loading: locating, retry } = useGeolocation()
   const [selecting, setSelecting] = useState(false)
   const [center, setCenter] = useState<LatLng>(DEFAULT_CENTER)
+  const [zoom, setZoom] = useState<number>()
   const [viewport, setViewport] = useState({ center: DEFAULT_CENTER, zoom: DEFAULT_ZOOM })
   const [query, setQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
@@ -74,13 +75,13 @@ export default function Home() {
     requestAnimationFrame(() => rangeTrigger.current?.focus())
   }, [])
 
-  const closeSearch = () => {
+  const closeSearch = (restoreFocus = true) => {
     searchRequest.current?.abort()
     setSearching(false)
     setSearchOpen(false)
     setResults([])
     setSearchError(null)
-    requestAnimationFrame(() => searchTrigger.current?.focus())
+    if (restoreFocus) requestAnimationFrame(() => searchTrigger.current?.focus())
   }
 
   const handleSearch = async (event: FormEvent<HTMLFormElement>) => {
@@ -108,15 +109,19 @@ export default function Home() {
 
   const moveToResult = (place: PlaceCandidate) => {
     searchedLocation.current = true
+    setZoom(undefined)
     setCenter({ lat: place.lat, lng: place.lng })
     closeSearch()
   }
 
   const locate = () => {
     searchedLocation.current = false
+    // A location request owns the status area; an open search must not hide its error.
+    if (searchOpen) closeSearch(false)
     setLocationNotice(true)
+    setZoom(DEFAULT_ZOOM)
     if (userLocation) setCenter({ ...userLocation })
-    retry()
+    retry(true)
   }
 
   const locationLabel = locating ? '현재 위치 확인 중' : geoError ? '현재 위치 다시 시도' : '내 위치로 이동'
@@ -124,7 +129,7 @@ export default function Home() {
   return (
     <>
       <main inert={selecting} className="relative h-dvh overflow-hidden bg-bg">
-        <MapView center={center} onViewportChange={handleViewport} topInset={120} bottomInset={96} className="absolute inset-0" />
+        <MapView center={center} zoom={zoom} onViewportChange={handleViewport} topInset={120} bottomInset={96} className="absolute inset-0" />
 
         <header className="pointer-events-none absolute inset-x-0 top-0 z-20 px-3 pt-[calc(env(safe-area-inset-top)+8px)]">
           <div className="flex h-11 items-center justify-end gap-2">
@@ -133,7 +138,7 @@ export default function Home() {
               <button data-glass="control" ref={searchTrigger} type="button" aria-label={searchOpen ? '지역 검색 닫기' : '지역 검색 열기'} aria-expanded={searchOpen} aria-controls="place-search-panel" title="지역 검색" onClick={() => searchOpen ? closeSearch() : setSearchOpen(true)} className={mapButtonClass}>
                 {searchOpen ? <X size={19} aria-hidden="true" /> : <Search size={19} aria-hidden="true" />}
               </button>
-              <button data-glass="control" type="button" onClick={locate} disabled={locating} aria-label={geoError ? `${locationLabel}. ${geoError} 위치 없이도 지도를 이용할 수 있습니다.` : locationLabel} title={geoError ? `${geoError} 다시 시도` : locationLabel} className={`${mapButtonClass} ${geoError ? 'text-amber-700' : ''}`}>
+              <button data-glass="control" type="button" onClick={locate} disabled={locating} aria-busy={locating} aria-label={geoError ? `${locationLabel}. ${geoError} 위치 없이도 지도를 이용할 수 있습니다.` : locationLabel} title={geoError ? `${geoError} 다시 시도` : locationLabel} className={`${mapButtonClass} ${geoError ? 'text-amber-700' : ''}`}>
                 {locating ? <Loader2 size={19} className="animate-spin" aria-hidden="true" /> : <LocateFixed size={19} aria-hidden="true" />}
               </button>
               <button data-glass="control" type="button" onClick={() => navigate('/gallery')} aria-label="방문 기록 보기" title="방문 기록" className={mapButtonClass}><Image size={19} aria-hidden="true" /></button>
@@ -159,7 +164,7 @@ export default function Home() {
                 <div className="mt-2 border-t border-border">
                   <div className="flex items-center justify-between px-2 py-1 text-xs font-bold text-text-light">
                     <span role="status">검색 결과 {results.length}개</span>
-                    <button type="button" aria-label="검색 결과 닫기" onClick={closeSearch} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-bg-secondary"><X size={16} aria-hidden="true" /></button>
+                    <button type="button" aria-label="검색 결과 닫기" onClick={() => closeSearch()} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-bg-secondary"><X size={16} aria-hidden="true" /></button>
                   </div>
                   <ul aria-label="지역 검색 결과">
                     {results.map((place, index) => (
@@ -173,9 +178,9 @@ export default function Home() {
             </section>
           )}
 
-          {!searchOpen && locationNotice && geoError && (
-            <div role="status" className="pointer-events-auto ml-auto mt-2 flex max-w-sm items-start gap-2 rounded-2xl border border-border bg-white/95 py-3 pl-3 pr-1 shadow-lg">
-              <div className="min-w-0 text-xs leading-relaxed"><p className="font-semibold text-text">{geoError}</p><p className="mt-1 text-text-light">지역을 검색하거나 지도를 움직여 바로 이용할 수 있어요.</p></div>
+          {locationNotice && (locating || geoError) && (
+            <div data-glass="panel" role="status" className="pointer-events-auto relative ml-auto mt-2 flex max-w-sm items-start gap-2 rounded-2xl border border-border bg-white/95 py-3 pl-3 pr-1 shadow-lg">
+              <div className="min-w-0 text-xs leading-relaxed"><p className="font-semibold text-text">{locating ? '현재 위치를 확인하고 있어요.' : geoError}</p><p className="mt-1 text-text-light">{locating ? '위치 권한 요청이 뜨면 허용해주세요. 최대 15초 동안 확인합니다.' : '지역을 검색하거나 지도를 움직여 바로 이용할 수 있어요.'}</p></div>
               <button type="button" onClick={() => setLocationNotice(false)} aria-label="위치 안내 닫기" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg hover:bg-bg-secondary"><X size={16} aria-hidden="true" /></button>
             </div>
           )}

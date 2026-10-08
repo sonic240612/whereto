@@ -208,3 +208,108 @@ test('database failures return generic responses and log only operation/error co
     logError: (operation, code) => { logs.push([operation, code]) },
   })
 })
+
+test('missing routes and invalid credentials cannot consume admin or public-share quotas', async () => {
+  const database = {
+    visit: { findMany: async () => [] },
+    share: { findUnique: async () => ({ ...location, createdAt: new Date(timestamp) }) },
+  } as unknown as Database
+  await withApp(async (base) => {
+    assert.equal((await fetch(`${base}/api/unknown`)).status, 404)
+    for (let i = 0; i < 3; i++) assert.equal((await fetch(`${base}/api/visits`)).status, 429)
+    assert.equal((await fetch(`${base}/api/visits`, { headers: admin })).status, 200)
+    assert.equal((await fetch(`${base}/api/visits`, { headers: admin })).status, 429)
+    assert.equal((await fetch(`${base}/api/shares/${'a'.repeat(32)}`)).status, 200)
+    assert.equal((await fetch(`${base}/api/shares/${'b'.repeat(32)}`)).status, 429)
+  }, { requestsPerMinute: 1, database: () => database })
+})
+
+test('untrusted forwarded headers cannot rotate the client quota', async () => {
+  for (const trustedProxyCidrs of [[], ['192.0.2.1/32']]) {
+    await withApp(async (base) => {
+      assert.equal((await fetch(`${base}/api/visits`, { headers: { 'X-Forwarded-For': '203.0.113.1', 'X-Vercel-Forwarded-For': '203.0.113.1' } })).status, 401)
+      assert.equal((await fetch(`${base}/api/visits`, { headers: { 'X-Forwarded-For': '203.0.113.2', 'X-Real-IP': '203.0.113.3', 'X-Vercel-Forwarded-For': '203.0.113.2' } })).status, 429)
+    }, { requestsPerMinute: 1, trustedProxyCidrs })
+  }
+})
+
+test('Vercel runtime uses canonical platform client IPs and safely falls back for invalid headers', async () => {
+  const previous = process.env.VERCEL
+  process.env.VERCEL = '1'
+  try {
+    await withApp(async (base) => {
+      const status = async (platformIp?: string, forwarded = '198.51.100.1') => (await fetch(`${base}/api/visits`, {
+        headers: { 'X-Forwarded-For': forwarded, ...(platformIp === undefined ? {} : { 'X-Vercel-Forwarded-For': platformIp }) },
+      })).status
+      assert.equal(await status('2001:0db8:0:0:0:0:0:1'), 401)
+      assert.equal(await status('2001:db8::1', '198.51.100.2'), 429)
+      assert.equal(await status('203.0.113.1'), 401)
+      assert.equal(await status('::ffff:203.0.113.1'), 429)
+      assert.equal(await status('203.0.113.2'), 401)
+      // Missing, malformed and multi-hop values all fall back to the same peer.
+      assert.equal(await status(), 401)
+      assert.equal(await status('invalid-ip', '198.51.100.2'), 429)
+      assert.equal(await status('203.0.113.3, 203.0.113.4'), 429)
+    }, { requestsPerMinute: 1, trustedProxyCidrs: [] })
+  } finally {
+    if (previous === undefined) delete process.env.VERCEL
+    else process.env.VERCEL = previous
+  }
+})
+
+test('only a configured proxy can separate clients, and untrusted hops cannot spoof the quota', async () => {
+  await withApp(async (base) => {
+    const status = async (forwarded: string) => (await fetch(`${base}/api/visits`, { headers: { 'X-Forwarded-For': forwarded } })).status
+    assert.equal(await status('198.51.100.1, 203.0.113.1'), 401)
+    assert.equal(await status('198.51.100.2, 203.0.113.1'), 429)
+    assert.equal(await status('203.0.113.2'), 401)
+  }, { requestsPerMinute: 1, trustedProxyCidrs: ['127.0.0.1/32'] })
+})
+
+test('IPv6 aliases and invalid addresses cannot mint extra quotas behind a trusted proxy', async () => {
+  await withApp(async (base) => {
+    const status = async (forwarded: string) => (await fetch(`${base}/api/visits`, { headers: { 'X-Forwarded-For': forwarded } })).status
+    assert.equal(await status('2001:0db8:0:0:0:0:0:1'), 401)
+    assert.equal(await status('2001:db8::1'), 429)
+    assert.equal(await status('invalid-address-a'), 401)
+    assert.equal(await status('invalid-address-b'), 429)
+  }, { requestsPerMinute: 1, trustedProxyCidrs: ['127.0.0.1/32'] })
+})
+
+test('unsupported request encodings remain sanitized client errors and do not become server-error logs', async () => {
+  const logs: unknown[] = []
+  await withApp(async (base) => {
+    for (const extra of [
+      { 'Content-Type': 'application/json; charset=iso-8859-1' },
+      { 'Content-Encoding': 'unsupported' },
+    ]) {
+      const response = await fetch(`${base}/api/visits`, { method: 'POST', headers: { ...json, ...extra } as Record<string, string>, body: '{}' })
+      assert.equal(response.status, 415)
+      assert.deepEqual(await response.json(), { error: 'Unsupported request body encoding' })
+    }
+    assert.deepEqual(logs, [])
+  }, { logError: (...args) => { logs.push(args) } })
+})
+
+test('security headers cover successful, rejected, parser and server-error responses', async () => {
+  await withApp(async (base) => {
+    const requests: [string, RequestInit, number][] = [
+      ['/api/health', {}, 200],
+      ['/api/missing', {}, 404],
+      ['/api/visits', {}, 401],
+      ['/api/health', { headers: { Origin: 'https://untrusted.example' } }, 403],
+      ['/api/visits', { method: 'POST', headers: { ...json, 'Content-Encoding': 'unsupported' }, body: '{}' }, 415],
+      ['/api/visits', { headers: admin }, 500],
+    ]
+    for (const [path, init, status] of requests) {
+      const response = await fetch(`${base}${path}`, init)
+      assert.equal(response.status, status)
+      assert.equal(response.headers.get('x-content-type-options'), 'nosniff')
+      assert.equal(response.headers.get('x-frame-options'), 'DENY')
+      assert.equal(response.headers.get('content-security-policy'), "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+      assert.equal(response.headers.get('referrer-policy'), 'no-referrer')
+      assert.equal(response.headers.get('x-powered-by'), null)
+      await response.arrayBuffer()
+    }
+  })
+})

@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { MapPin, Star, Trash2, Calendar, MessageSquare, Pencil, Download, Upload, Undo2, RefreshCw } from 'lucide-react'
 import VisitForm from '../components/VisitForm'
-import { fetchVisits, deleteVisit, updateVisit, restoreVisit, exportVisits, importVisits, resetVisits, StorageError } from '../lib/api'
+import { fetchVisits, deleteVisit, updateVisit, restoreVisit, exportVisits, importVisits, resetVisits, StorageError, MAX_VISIT_BACKUP_BYTES } from '../lib/api'
 import type { Visit } from '../types'
 
 const actionClass = 'inline-flex items-center justify-center gap-2 rounded-xl border border-border bg-white px-3 py-2.5 text-xs font-semibold text-text transition-colors hover:bg-bg-secondary disabled:opacity-40 disabled:cursor-not-allowed'
@@ -125,7 +125,7 @@ export default function Gallery() {
     setBusy('import')
     setActionError(null)
     try {
-      if (file.size > 2_000_000) throw new Error('2MB 이하의 방문 기록 JSON 파일을 선택해주세요.')
+      if (file.size > MAX_VISIT_BACKUP_BYTES) throw new Error(`${MAX_VISIT_BACKUP_BYTES / 1_000_000}MB 이하의 방문 기록 JSON 파일을 선택해주세요.`)
       const result = await importVisits(await file.text())
       setNotice(`${result.added}개 기록을 가져왔습니다. 중복 ${result.skipped}개는 건너뛰었습니다.`)
       await reload()
@@ -241,7 +241,7 @@ export default function Gallery() {
       </main>
 
       {editing && <VisitForm key={editing.id} placeName={editing.name ?? ''} defaultAddress={editing.address} initialRating={editing.rating} initialNote={editing.note ?? ''} title="방문 기록 수정" submitLabel="수정 저장" onCancel={() => setEditing(null)} onSubmit={async (data) => {
-        await updateVisit(editing.id, data)
+        await updateVisit(editing.id, data, editing)
         setEditing(null)
         setNotice('방문 기록을 수정했습니다.')
         await reload()

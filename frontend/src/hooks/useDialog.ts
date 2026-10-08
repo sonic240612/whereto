@@ -15,6 +15,11 @@ export default function useDialog(onClose: () => void) {
     )).filter(element => element.getClientRects().length > 0)
     const focusInside = () => (elements()[0] ?? dialog).focus()
     focusInside()
+    // Portalled dialogs must also hide the background from keyboard/AT navigation.
+    const background = document.getElementById('root')
+    const isolateBackground = background && !background.contains(dialog)
+    const previousInert = background?.inert ?? false
+    if (isolateBackground) background.inert = true
     const oldOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const keydown = (event: KeyboardEvent) => {
@@ -43,6 +48,7 @@ export default function useDialog(onClose: () => void) {
       document.body.style.overflow = oldOverflow
       document.removeEventListener('keydown', keydown)
       document.removeEventListener('focusin', focusin)
+      if (isolateBackground) background.inert = previousInert
       previous?.focus()
     }
   }, [])

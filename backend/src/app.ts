@@ -2,6 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import express, { type ErrorRequestHandler, type RequestHandler } from 'express'
 import cors from 'cors'
 import { PrismaClient } from '@prisma/client'
+import { canonicalClientIp, createClientLimiter, validateTrustedProxyCidrs } from './rate-limit.js'
 
 export type Database = Pick<PrismaClient, 'visit' | 'share'>
 
@@ -11,6 +12,8 @@ export interface AppOptions {
   apiToken?: string
   allowedOrigins?: string[]
   requestsPerMinute?: number
+  rateLimitMaxClients?: number
+  trustedProxyCidrs?: string[]
   now?: () => number
   logError?: (operation: string, code: string) => void
 }
@@ -88,10 +91,47 @@ export function createApp(options: AppOptions = {}) {
   const now = options.now ?? Date.now
   const logError = options.logError ?? ((operation, code) => console.error('Database operation failed', { operation, code }))
   const requestsPerMinute = options.requestsPerMinute ?? 60
-  let windowStart = now()
-  let requestCount = 0
+  const limiterOptions = { requestsPerMinute, maxClients: options.rateLimitMaxClients, now }
+  const limiters = {
+    admin: createClientLimiter(limiterOptions),
+    public: createClientLimiter(limiterOptions),
+    rejected: createClientLimiter(limiterOptions),
+  }
+  const trustedProxies = validateTrustedProxyCidrs(options.trustedProxyCidrs ?? (process.env.TRUSTED_PROXY_CIDRS ?? '')
+    .split(',').map(value => value.trim()).filter(Boolean))
+  const onVercel = process.env.VERCEL === '1'
+  const limit = (bucket: keyof typeof limiters): RequestHandler => (req, res, next) => {
+    // Vercel supplies its own client IP. Only trust that header in the platform
+    // runtime; accept a single IP, never infer a trust boundary from a hop list.
+    // https://vercel.com/docs/headers/request-headers#x-vercel-forwarded-for
+    const platformIp = onVercel ? canonicalClientIp(req.get('x-vercel-forwarded-for')?.trim()) : undefined
+    // Otherwise Express trusts forwarded headers only for allowlisted peers.
+    const client = platformIp ?? canonicalClientIp(req.ip) ?? canonicalClientIp(req.socket.remoteAddress) ?? 'unknown'
+    const result = limiters[bucket](client)
+    res.locals.rateLimitApplied = true
+    if (!result.allowed) {
+      res.set('Retry-After', String(result.retryAfter))
+      res.status(429).json({ error: 'Too many requests. Try again later.' })
+      return
+    }
+    next()
+  }
+  const limitAdmin = limit('admin')
+  const limitPublic = limit('public')
+  const limitRejected = limit('rejected')
 
   app.disable('x-powered-by')
+  app.set('query parser', false) // No API route consumes query-string input.
+  app.set('trust proxy', trustedProxies.length ? trustedProxies : false)
+  app.use((_req, res, next) => {
+    res.set({
+      'X-Content-Type-Options': 'nosniff',
+      'X-Frame-Options': 'DENY',
+      'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+      'Referrer-Policy': 'no-referrer',
+    })
+    next()
+  })
   app.use((req, res, next) => {
     const origin = req.get('Origin')
     if (origin && !allowedOrigins.includes(origin)) {
@@ -109,17 +149,6 @@ export function createApp(options: AppOptions = {}) {
   app.get('/api/health', (_req, res) => { res.json({ status: 'ok' }) })
   app.use('/api', (_req, res, next) => {
     res.set('Cache-Control', 'no-store')
-    const timestamp = now()
-    if (timestamp - windowStart >= 60_000) {
-      windowStart = timestamp
-      requestCount = 0
-    }
-    // This is a process-wide safeguard, not a distributed quota or per-user limit.
-    if (++requestCount > requestsPerMinute) {
-      res.set('Retry-After', String(Math.max(1, Math.ceil((windowStart + 60_000 - timestamp) / 1000))))
-      res.status(429).json({ error: 'Too many requests. Try again later.' })
-      return
-    }
     next()
   })
 
@@ -136,11 +165,13 @@ export function createApp(options: AppOptions = {}) {
     const suppliedBuffer = Buffer.from(supplied)
     const expectedBuffer = Buffer.from(expected)
     if (suppliedBuffer.length !== expectedBuffer.length || !timingSafeEqual(suppliedBuffer, expectedBuffer)) {
-      res.set('WWW-Authenticate', 'Bearer')
-      res.status(401).json({ error: 'Administrator authorization required' })
+      limitRejected(req, res, () => {
+        res.set('WWW-Authenticate', 'Bearer')
+        res.status(401).json({ error: 'Administrator authorization required' })
+      })
       return
     }
-    next()
+    limitAdmin(req, res, next)
   }
   const requireJson: RequestHandler = (req, res, next) => {
     if (!req.is('application/json')) {
@@ -159,7 +190,8 @@ export function createApp(options: AppOptions = {}) {
   }
   const validToken: RequestHandler = (req, res, next) => {
     if (!tokenPattern.test(req.params.token)) {
-      res.status(404).json({ error: 'Share not found' })
+      if (res.locals.rateLimitApplied) res.status(404).json({ error: 'Share not found' })
+      else limitRejected(req, res, () => { res.status(404).json({ error: 'Share not found' }) })
       return
     }
     next()
@@ -219,7 +251,7 @@ export function createApp(options: AppOptions = {}) {
       res.status(500).json({ error: 'Failed to create share' })
     }
   })
-  app.get('/api/shares/:token', validToken, async (req, res) => {
+  app.get('/api/shares/:token', validToken, limitPublic, async (req, res) => {
     try {
       const share = await database().share.findUnique({ where: { token: req.params.token } })
       if (!share || now() >= share.createdAt.getTime() + SHARE_LIFETIME_MS) {
@@ -244,11 +276,19 @@ export function createApp(options: AppOptions = {}) {
     }
   })
 
+  app.use((req, res, next) => {
+    if (res.locals.rateLimitApplied) next()
+    else limitRejected(req, res, next)
+  })
   app.use((_req, res) => { res.status(404).json({ error: 'Route not found' }) })
   const handleError: ErrorRequestHandler = (error: unknown, _req, res, _next) => {
     const type = isRecord(error) ? error.type : undefined
     if (type === 'entity.too.large') {
       res.status(413).json({ error: 'Request body exceeds 32 KB' })
+    } else if (type === 'charset.unsupported' || type === 'encoding.unsupported') {
+      res.status(415).json({ error: 'Unsupported request body encoding' })
+    } else if (type === 'entity.verify.failed') {
+      res.status(403).json({ error: 'Request body is not allowed' })
     } else if (error instanceof SyntaxError || error instanceof URIError || (isRecord(error) && error.status === 400)) {
       res.status(400).json({ error: 'Invalid request' })
     } else {

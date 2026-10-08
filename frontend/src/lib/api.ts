@@ -2,8 +2,12 @@ import type { Visit } from '../types/index.ts'
 import { isLatLng } from './validation.ts'
 
 const STORAGE_KEY = 'whereto_visits'
-const MAX_IMPORT_LENGTH = 2_000_000
+// UTF-8 backups can be larger than localStorage's UTF-16 accounting, especially
+// for Korean text. Every newly stored collection can be exported and reimported.
+export const MAX_VISIT_BACKUP_BYTES = 20_000_000
+const MAX_BACKUP_LABEL = `${MAX_VISIT_BACKUP_BYTES / 1_000_000}MB`
 const MAX_VISITS = 10_000
+const encoder = new TextEncoder()
 
 export type StorageErrorCode = 'unavailable' | 'quota' | 'corrupt' | 'unsupported' | 'invalid' | 'conflict'
 
@@ -98,18 +102,41 @@ function readVisits(): Visit[] {
   return raw === null ? [] : parseVisits(raw)
 }
 
-function writeVisits(visits: Visit[]): void {
+function serializeVisits(visits: Visit[]): string {
   if (visits.length > MAX_VISITS) {
     throw new StorageError('quota', '저장할 수 있는 기록 수를 초과했습니다. 먼저 기록을 내보내고 일부를 삭제해주세요.')
   }
+  const raw = JSON.stringify({ version: 1, visits: visits.map(normalizeVisit) })
+  if (encoder.encode(raw).byteLength > MAX_VISIT_BACKUP_BYTES) {
+    throw new StorageError('quota', `방문 기록 전체 크기가 ${MAX_BACKUP_LABEL} 한도를 초과했습니다. 먼저 기록을 내보내고 일부를 삭제해주세요.`)
+  }
+  return raw
+}
+
+function writeVisits(visits: Visit[]): void {
+  const raw = serializeVisits(visits)
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, visits }))
+    localStorage.setItem(STORAGE_KEY, raw)
   } catch (error) {
     const name = error instanceof Error ? error.name : ''
     if (name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED') {
       throw new StorageError('quota', '브라우저 저장 공간이 부족합니다. 방문 기록을 내보내고 불필요한 기록을 삭제한 뒤 다시 시도해주세요.')
     }
     throw new StorageError('unavailable', '방문 기록을 브라우저에 저장하지 못했습니다. 사이트 데이터 저장이 허용되어 있는지 확인해주세요.')
+  }
+}
+
+async function withWriteLock<T>(operation: () => T): Promise<T> {
+  try {
+    // Serialize cooperating tabs for the entire read/compare/write operation.
+    // Browsers without Web Locks still execute the fallback synchronously.
+    if (typeof navigator !== 'undefined' && navigator.locks) {
+      return await navigator.locks.request(STORAGE_KEY, { mode: 'exclusive' }, operation)
+    }
+    return operation()
+  } catch (error) {
+    if (error instanceof StorageError) throw error
+    throw new StorageError('unavailable', '방문 기록 저장을 시작하지 못했습니다. 다른 창의 저장이 끝난 뒤 다시 시도해주세요.')
   }
 }
 
@@ -140,7 +167,6 @@ export async function fetchVisits(): Promise<Visit[]> {
 export async function createVisit(data: VisitDetails & { lat: number; lng: number }): Promise<Visit> {
   if (!isLatLng(data)) throw new StorageError('invalid', '저장할 장소의 좌표가 올바르지 않습니다.')
   const details = checkedDetails(data)
-  const visits = readVisits()
   const newVisit: Visit = {
     id: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
@@ -150,68 +176,88 @@ export async function createVisit(data: VisitDetails & { lat: number; lng: numbe
     photoUrl: null,
     photoId: null,
   }
-  writeVisits([...visits, newVisit])
-  return newVisit
+  return withWriteLock(() => {
+    writeVisits([...readVisits(), newVisit])
+    return newVisit
+  })
 }
 
-export async function updateVisit(id: string, data: VisitDetails): Promise<Visit> {
+export async function updateVisit(id: string, data: VisitDetails, expected: Visit): Promise<Visit> {
   const details = checkedDetails(data)
-  const visits = readVisits()
-  const current = visits.find((visit) => visit.id === id)
-  if (!current) throw new StorageError('conflict', '이 기록이 다른 창에서 삭제되었습니다. 방문 기록을 새로 불러와주세요.')
-  const updated = { ...current, ...details }
-  writeVisits(visits.map((visit) => visit.id === id ? updated : visit))
-  return updated
+  if (!isVisit(expected) || expected.id !== id) throw new StorageError('invalid', '수정할 기록을 다시 열어주세요.')
+  const expectedSnapshot = JSON.stringify(normalizeVisit(expected))
+  return withWriteLock(() => {
+    const visits = readVisits()
+    const current = visits.find((visit) => visit.id === id)
+    if (!current) throw new StorageError('conflict', '이 기록이 다른 창에서 삭제되었습니다. 입력한 내용을 보관한 뒤 방문 기록을 새로 불러와주세요.')
+    if (JSON.stringify(current) !== expectedSnapshot) {
+      throw new StorageError('conflict', '다른 창에서 이 기록이 변경되었습니다. 입력한 내용은 이 창에 남아 있습니다. 필요한 내용을 복사한 뒤 창을 닫고 최신 기록을 다시 열어주세요.')
+    }
+    const updated = { ...current, ...details }
+    writeVisits(visits.map((visit) => visit.id === id ? updated : visit))
+    return updated
+  })
 }
 
 export async function deleteVisit(id: string): Promise<Visit | null> {
-  const visits = readVisits()
-  const removed = visits.find((visit) => visit.id === id)
-  if (!removed) return null
-  writeVisits(visits.filter((visit) => visit.id !== id))
-  return removed
+  return withWriteLock(() => {
+    const visits = readVisits()
+    const removed = visits.find((visit) => visit.id === id)
+    if (!removed) return null
+    writeVisits(visits.filter((visit) => visit.id !== id))
+    return removed
+  })
 }
 
 export async function restoreVisit(visit: Visit): Promise<void> {
   if (!isVisit(visit)) throw new StorageError('invalid', '복원할 방문 기록이 올바르지 않습니다.')
-  const visits = readVisits()
-  const current = visits.find((item) => item.id === visit.id)
-  if (current) {
-    if (JSON.stringify(normalizeVisit(current)) === JSON.stringify(normalizeVisit(visit))) return
-    throw new StorageError('conflict', '같은 ID의 다른 기록이 있어 복원하지 못했습니다. 현재 기록을 먼저 내보내주세요.')
-  }
-  writeVisits([...visits, normalizeVisit(visit)])
+  const restored = normalizeVisit(visit)
+  return withWriteLock(() => {
+    const visits = readVisits()
+    const current = visits.find((item) => item.id === restored.id)
+    if (current) {
+      if (JSON.stringify(current) === JSON.stringify(restored)) return
+      throw new StorageError('conflict', '같은 ID의 다른 기록이 있어 복원하지 못했습니다. 현재 기록을 먼저 내보내주세요.')
+    }
+    writeVisits([...visits, restored])
+  })
 }
 
 export async function exportVisits(): Promise<string> {
-  return JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), visits: readVisits() }, null, 2)
+  return serializeVisits(readVisits())
 }
 
 export async function importVisits(rawData: string): Promise<{ added: number; skipped: number }> {
-  if (rawData.length > MAX_IMPORT_LENGTH) throw new StorageError('invalid', '가져올 파일이 너무 큽니다. 2MB 이하의 방문 기록 JSON을 선택해주세요.')
-  const incoming = parseVisits(rawData, true)
-  const visits = readVisits()
-  const ids = new Set(visits.map((visit) => visit.id))
-  const fingerprint = (visit: Visit) => JSON.stringify({ ...normalizeVisit(visit), id: undefined })
-  const fingerprints = new Set(visits.map(fingerprint))
-  let added = 0
-  for (const visit of incoming) {
-    const signature = fingerprint(visit)
-    if (fingerprints.has(signature)) continue
-    const id = ids.has(visit.id) ? crypto.randomUUID() : visit.id
-    visits.push({ ...visit, id })
-    ids.add(id)
-    fingerprints.add(signature)
-    added += 1
+  if (encoder.encode(rawData).byteLength > MAX_VISIT_BACKUP_BYTES) {
+    throw new StorageError('invalid', `가져올 파일이 너무 큽니다. ${MAX_BACKUP_LABEL} 이하의 방문 기록 JSON을 선택해주세요.`)
   }
-  if (added > 0) writeVisits(visits)
-  return { added, skipped: incoming.length - added }
+  const incoming = parseVisits(rawData, true)
+  return withWriteLock(() => {
+    const visits = readVisits()
+    const ids = new Set(visits.map((visit) => visit.id))
+    const fingerprint = (visit: Visit) => JSON.stringify({ ...normalizeVisit(visit), id: undefined })
+    const fingerprints = new Set(visits.map(fingerprint))
+    let added = 0
+    for (const visit of incoming) {
+      const signature = fingerprint(visit)
+      if (fingerprints.has(signature)) continue
+      const id = ids.has(visit.id) ? crypto.randomUUID() : visit.id
+      visits.push({ ...visit, id })
+      ids.add(id)
+      fingerprints.add(signature)
+      added += 1
+    }
+    if (added > 0) writeVisits(visits)
+    return { added, skipped: incoming.length - added }
+  })
 }
 
 // The caller must explicitly confirm resetting this exact unreadable snapshot.
 export async function resetVisits(expectedRawData: string): Promise<void> {
-  if (readRaw() !== expectedRawData) {
-    throw new StorageError('conflict', '저장된 기록이 변경되었습니다. 다시 불러온 뒤 초기화 여부를 확인해주세요.')
-  }
-  writeVisits([])
+  return withWriteLock(() => {
+    if (readRaw() !== expectedRawData) {
+      throw new StorageError('conflict', '저장된 기록이 변경되었습니다. 다시 불러온 뒤 초기화 여부를 확인해주세요.')
+    }
+    writeVisits([])
+  })
 }

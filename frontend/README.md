@@ -12,7 +12,7 @@ npm run dev -- --host 127.0.0.1 --port 5180 --strictPort
 - `npm run lint`: 소스와 Vite 설정을 검사하며 경고도 실패로 처리
 - `npm test`: 외부 API 호출 없는 공급자·도메인 로직·저장소 회귀 테스트
 - `npm run build`: strict TypeScript 검사와 Vite 배포 빌드
-- `npm run preview`: 빌드 결과 미리보기
+- `npm run preview`: Vercel과 같은 보안 헤더를 적용한 빌드 결과 미리보기
 
 ## 카카오 지도와 장소 검색
 
@@ -38,6 +38,8 @@ VITE_KAKAO_MAP_APP_KEY=발급받은_JavaScript_키
 
 실제 키·API 활성화·도메인 설정 후 지도 표시, 키워드/주소 검색, 식당 추첨과 오류 복구를 확인합니다. 공급자 테스트는 대역 응답을 사용하므로 계정 설정 검증을 대신하지 않습니다. SDK에서 HTTP 403과 `disabled OPEN_MAP_AND_LOCAL service`가 반환되면 해당 앱의 **카카오맵 → 사용 설정**을 먼저 확인합니다.
 
+현재 위치는 브라우저의 위치 권한과 기기의 위치 서비스를 사용합니다. 첫 자동 조회는 최대 1분 전 위치를 허용하고, `내 위치로 이동`을 누르면 마지막 위치로 먼저 이동한 뒤 캐시 없는 새 위치를 요청합니다. 같은 좌표라도 지도를 다른 곳으로 움직였다면 다시 중심을 맞추고, 버튼을 누를 때마다 카카오 지도 축척을 100m로 되돌립니다. 지역 검색은 현재 확대 수준을 유지합니다. 권한 응답을 포함한 대기는 15초로 제한하며, 실패하면 브라우저 권한·기기 위치 설정 안내와 재시도 버튼을 표시합니다. 재시도나 화면 이동 후 도착한 이전 응답은 무시합니다. 위치 권한 없이도 지역 검색과 지도 이동으로 이용할 수 있습니다.
+
 카카오의 활성화·무료 쿼터 조건은 [공식 안내](https://developers.kakao.com/docs/ko/kakaomap/common)를 확인합니다. 새로 활성화한 두 번째 이후 앱은 무료 쿼터 대상이 아닐 수 있습니다. 자세한 예외·설정·저장/공유 방식은 [루트 README](../README.md)에 있습니다.
 
 ## 디자인 전환과 Liquid Glass
@@ -50,6 +52,8 @@ VITE_KAKAO_MAP_APP_KEY=발급받은_JavaScript_키
 
 필터는 보이는 유리 표면에만 만들고, 법선 이미지 크기는 최대 512px/65,536픽셀입니다. 크기가 바뀌는 렌즈의 이미지 재생성은 120ms 간격으로 제한하며, 눌림은 기존 필터 강도만 갱신합니다.
 
+길찾기는 `document.body`에 별도 모달 팝업으로 렌더링하여 결과 카드의 높이나 지도 여백을 바꾸지 않습니다. 팝업 패널에도 동일한 SVG 굴절·색분산·틴트·반사광·스프링을 연결합니다. 팝업의 등장 애니메이션은 별도 래퍼에서 실행하며, 지도 배경의 광학 샘플링을 막는 부모 opacity/filter는 사용하지 않습니다. 열린 동안 배경을 inert로 처리하고 Tab 포커스를 내부에 유지합니다. Escape·닫기·배경 클릭으로 닫으면 길찾기 버튼으로 포커스가 돌아옵니다. 클래식 및 모션 끄기도 유지됩니다.
+
 ## 키 없는 개발 미리보기
 
 `VITE_GEOCODER_URL`은 Photon 호환 URL입니다. `VITE_MAP_STYLE_URL`과 `VITE_MAP_ATTRIBUTION`으로 벡터 지도 공급자를 바꿀 수 있고, `VITE_MAP_TILE_URL`을 설정하면 래스터 지도 모드가 우선합니다. 이 설정들은 카카오 키가 없는 경우에만 사용합니다. 기존 `.env.local`의 `VITE_MAP_TILE_URL`을 지우면 기본 벡터 지도로 돌아갑니다.
@@ -57,3 +61,5 @@ VITE_KAKAO_MAP_APP_KEY=발급받은_JavaScript_키
 ## 배포
 
 Vercel Root Directory는 `frontend`, Build Command는 `npm run build`, Output Directory는 `dist`입니다. Vercel 환경변수에 `VITE_KAKAO_MAP_APP_KEY`를 넣고 새 배포를 생성해야 해당 빌드가 카카오를 사용합니다. `vercel.json`이 공유·갤러리·결과 URL의 직접 접근을 SPA로 연결합니다.
+
+같은 설정에서 CSP·프레임 차단·MIME 스니핑 차단·Referrer/Permissions 정책을 응답 헤더로 제공합니다. 카카오 SDK의 필요한 경로와 기본 OpenFreeMap/OSM/Photon 출처만 허용합니다. 공급자 URL을 변경할 때에는 CSP 허용 목록도 같이 수정하고 `npm run build` → `npm run preview`로 검증하세요. HMR을 사용하는 개발 서버는 운영용 CSP 검증 환경이 아닙니다.

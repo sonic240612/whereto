@@ -20,7 +20,7 @@
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "cors": "^2.8.6",
-    "express": "^4.22.2"
+    "express": "^4.22.3"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
@@ -29,5 +29,13 @@
     "prisma": "^6.19.3",
     "tsx": "^4.22.4",
     "typescript": "^6.0.3"
+  },
+  "overrides": {
+    "qs": "6.16.0",
+    "proxy-addr": "2.0.8",
+    "body-parser": "1.20.6",
+    "@prisma/config": {
+      "deepmerge-ts": "8.0.2"
+    }
   }
 }
