@@ -1,6 +1,7 @@
 import type { PlaceCandidate } from './geocode-client.ts'
 import { getKakaoCategoryCode, kakaoDestinationCategories, type DestinationCategory, type KakaoDestinationCode } from './categories.ts'
 import { isLatLng, isRecord } from './validation.ts'
+import { placeMetadata } from './place-metadata.ts'
 
 type ServiceCallback = (data: unknown, status: string) => void
 
@@ -70,7 +71,8 @@ function placeEntries(data: unknown[], expectedCode?: KakaoDestinationCode) {
     const parts = [text(item.place_name), text(item.road_address_name) || text(item.address_name)].filter(Boolean)
     const address = [...new Set(parts)].join(', ').slice(0, 2000)
     if (!address) return []
-    const place: PlaceCandidate = { ...point, address, category: 'kakao', type: code }
+    const place: PlaceCandidate = { ...point, address, category: 'kakao', type: code,
+      ...placeMetadata({ placeName: item.place_name, kakaoPlaceId: item.id }) }
     const key = text(item.id) || `${point.lat},${point.lng},${address}`
     return [{ key, place }]
   })

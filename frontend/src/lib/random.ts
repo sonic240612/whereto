@@ -3,6 +3,7 @@ import type { PlaceCandidate } from './geocode-client.ts'
 import { categoryLabels, matchesCategory, type DestinationCategory } from './categories.ts'
 import { contains, isBounds, isLatLng } from './validation.ts'
 import { containsPolygon, createPolygonSampler, isPolygon } from './polygon.ts'
+import { placeMetadata } from './place-metadata.ts'
 
 // Choose mapped destination coordinates; reject water/administrative categories.
 export function isDestination(place: PlaceCandidate, category: DestinationCategory = 'all'): boolean {
@@ -34,7 +35,7 @@ export async function generateRandomCoord(
       && (!polygon || containsPolygon(polygon, place)))
     if (candidates.length) {
       const selected = candidates[Math.min(candidates.length - 1, Math.floor(random() * candidates.length))]
-      return { lat: selected.lat, lng: selected.lng, address: selected.address }
+      return { lat: selected.lat, lng: selected.lng, address: selected.address, ...placeMetadata(selected) }
     }
   }
   throw new Error(category === 'all'

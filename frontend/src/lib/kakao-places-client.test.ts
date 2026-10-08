@@ -5,7 +5,7 @@ import { destinationCategories, matchesCategory } from './categories.ts'
 import { generateRandomCoord } from './random.ts'
 
 const restaurant = {
-  id: 'restaurant-1', place_name: '강남 식당', road_address_name: '서울 강남구 테스트로 1',
+  id: '123456789', place_name: '강남 식당', road_address_name: '서울 강남구 테스트로 1',
   address_name: '서울 강남구 테스트동 1', category_group_code: 'FD6', x: '127', y: '37.5',
 }
 
@@ -36,7 +36,7 @@ test('restaurant lookup uses only FD6 and preserves actual Kakao category and co
   const client = createKakaoPlacesClient({ getServices: () => sdk, intervalMs: 0 })
   const result = await client.reverse(37.6, 127.1, undefined, 'restaurant')
   assert.equal(calls, 1)
-  assert.deepEqual(result, [{ lat: 37.5, lng: 127, address: '강남 식당, 서울 강남구 테스트로 1', category: 'kakao', type: 'FD6' }])
+  assert.deepEqual(result, [{ lat: 37.5, lng: 127, address: '강남 식당, 서울 강남구 테스트로 1', placeName: '강남 식당', kakaoPlaceId: '123456789', category: 'kakao', type: 'FD6' }])
   assert.equal(matchesCategory(result[0], 'restaurant'), true)
 })
 

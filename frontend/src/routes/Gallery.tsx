@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { Link } from 'react-router-dom'
-import { MapPin, Star, Trash2, Calendar, MessageSquare, Pencil, Download, Upload, Undo2, RefreshCw } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { ArrowLeft, MapPin, Star, Trash2, Calendar, MessageSquare, Pencil, Download, Upload, Undo2, RefreshCw } from 'lucide-react'
 import VisitForm from '../components/VisitForm'
 import { fetchVisits, deleteVisit, updateVisit, restoreVisit, exportVisits, importVisits, resetVisits, StorageError, MAX_VISIT_BACKUP_BYTES } from '../lib/api'
 import type { Visit } from '../types'
@@ -23,6 +23,7 @@ function errorMessage(cause: unknown): string {
 }
 
 export default function Gallery() {
+  const navigate = useNavigate()
   const [visits, setVisits] = useState<Visit[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<Error | null>(null)
@@ -35,6 +36,18 @@ export default function Gallery() {
   const [resetConfirmed, setResetConfirmed] = useState(false)
   const importRef = useRef<HTMLInputElement>(null)
   const loadSequence = useRef(0)
+
+  const goBack = () => {
+    if (busy || editing) return
+    // React Router starts at index 0 on a direct visit. Avoid taking those
+    // visitors out of WhereTo when there is no previous in-app screen.
+    const historyIndex: unknown = window.history.state?.idx
+    if (typeof historyIndex === 'number' && Number.isInteger(historyIndex) && historyIndex > 0) {
+      navigate(-1)
+    } else {
+      navigate('/', { replace: true })
+    }
+  }
 
   const reload = useCallback(async () => {
     const sequence = ++loadSequence.current
@@ -155,11 +168,14 @@ export default function Gallery() {
 
   return (
     <div className="gallery-page min-h-dvh bg-bg-secondary">
-      <div className="sticky top-0 z-20 glass-strong border-b border-border/50">
-        <div className="flex h-[calc(env(safe-area-inset-top)+60px)] items-center pl-36 pr-16 pt-[env(safe-area-inset-top)]">
+      <header className="sticky top-0 z-20 glass-strong border-b border-border/50 pt-[calc(env(safe-area-inset-top)+60px)]">
+        <div className="mx-auto flex max-w-3xl items-center gap-3 px-5 pb-3">
+          <button data-glass="control" type="button" onClick={goBack} disabled={!!busy || !!editing} aria-label="이전 화면으로 돌아가기" className="relative flex h-11 shrink-0 items-center gap-1.5 rounded-2xl border border-border bg-white px-3 text-sm font-semibold text-text shadow-sm hover:bg-bg-secondary disabled:cursor-not-allowed disabled:opacity-40">
+            <ArrowLeft size={18} aria-hidden="true" />뒤로
+          </button>
           <h1 className="text-lg font-extrabold text-text">방문 기록</h1>
         </div>
-      </div>
+      </header>
 
       <main className="p-5 space-y-4 pb-8 max-w-3xl mx-auto">
         <section data-glass="panel" aria-label="기록 보관과 백업" className="rounded-2xl border border-border bg-white p-4 space-y-3">

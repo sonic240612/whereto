@@ -14,6 +14,8 @@ export interface CoordResult {
   lat: number
   lng: number
   address: string
+  placeName?: string
+  kakaoPlaceId?: string
 }
 
 export interface Visit {

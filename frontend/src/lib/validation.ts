@@ -1,5 +1,6 @@
 import type { CoordResult, LatLng, RectBounds } from '../types/index.ts'
 import type { DestinationCategory } from './categories.ts'
+import { readPlaceMetadata } from './place-metadata.ts'
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -51,5 +52,5 @@ export function parseResult(params: URLSearchParams, expectedCategory?: Destinat
   if (expectedProvider !== undefined && (params.get('resultProvider') ?? 'open') !== expectedProvider) return null
   const point = parseLatLng(params)
   const address = params.get('address')?.trim()
-  return point && address && address.length <= 2000 ? { ...point, address } : null
+  return point && address && address.length <= 2000 ? { ...point, address, ...readPlaceMetadata(params) } : null
 }

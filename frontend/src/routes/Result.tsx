@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Loader2, RefreshCw, ScanLine, Share2, ChevronUp, Ellipsis, Bookmark } from 'lucide-react'
+import { Loader2, RefreshCw, ScanLine, Share2, ChevronDown, Ellipsis, Bookmark, History } from 'lucide-react'
 import MapView from '../components/MapView'
 import ResultPin from '../components/ResultPin'
 import NavLinks from '../components/NavLinks'
+import KakaoPlaceLink from '../components/KakaoPlaceLink'
 import VisitForm from '../components/VisitForm'
 import CategoryBar from '../components/CategoryBar'
 import RangeSelector from '../components/RangeSelector'
@@ -15,6 +16,7 @@ import { containsPolygon, getPolygonBounds, isPolygon, parsePolygon, serializePo
 import { getShareUrl } from '../lib/share'
 import { categoryLabels, parseDestinationCategory, type DestinationCategory } from '../lib/categories'
 import { usesKakaoMaps } from '../lib/map-provider'
+import { writePlaceMetadata } from '../lib/place-metadata'
 import type { CoordResult, LatLng } from '../types'
 
 export default function Result() {
@@ -142,6 +144,7 @@ export default function Result() {
       next.set('lat', String(value.lat))
       next.set('lng', String(value.lng))
       next.set('address', value.address)
+      writePlaceMetadata(next, value)
       next.set('resultCategory', category)
       next.set('resultProvider', usesKakaoMaps ? 'kakao' : 'open')
       setParams(next, { replace: true })
@@ -166,7 +169,7 @@ export default function Result() {
     const next = new URLSearchParams(params)
     if (nextCategory === 'all') next.delete('category')
     else next.set('category', nextCategory)
-    for (const key of ['lat', 'lng', 'address', 'resultCategory', 'resultProvider']) next.delete(key)
+    for (const key of ['lat', 'lng', 'address', 'placeName', 'kakaoPlaceId', 'resultCategory', 'resultProvider']) next.delete(key)
     setParams(next, { replace: true })
   }
 
@@ -214,12 +217,12 @@ export default function Result() {
             </div>
           )}
           <button data-glass="action" type="button" aria-expanded={expanded} aria-controls={moreId} aria-label={expanded ? '장소 더보기 접기' : '장소 더보기'} onClick={() => setExpanded(value => !value)} className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl text-text-light hover:bg-bg-secondary">
-            {expanded ? <ChevronUp size={20} aria-hidden="true" /> : <Ellipsis size={22} aria-hidden="true" />}
+            {expanded ? <ChevronDown size={20} aria-hidden="true" /> : <Ellipsis size={22} aria-hidden="true" />}
           </button>
         </div>
         {error && <div role="alert" className="mt-2 rounded-xl bg-red-50 p-3 text-sm text-red-800 [overflow-wrap:anywhere]">{error}</div>}
-        <div className={`mt-3 grid items-end gap-2 ${result ? 'grid-cols-3' : 'grid-cols-2'}`}>
-          {result && <NavLinks lat={result.lat} lng={result.lng} compact />}
+        <div className="mt-3 grid grid-cols-2 items-end gap-2">
+          {result && <><KakaoPlaceLink place={result} compact /><NavLinks {...result} compact /></>}
           <button data-glass="action" data-glass-tone={!result ? 'accent' : undefined} ref={drawTrigger} type="button" onClick={handleDraw} disabled={loading} className={`flex min-h-11 min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-xl border border-border px-1.5 py-2.5 text-xs font-semibold disabled:opacity-40 sm:text-sm ${!result ? 'bg-primary-dark text-white' : ''}`}><RefreshCw size={16} className="hidden shrink-0 sm:block" aria-hidden="true" />{loading ? '뽑는 중…' : error ? '다시 시도' : result ? '다시 뽑기' : '뽑기'}</button>
           <button data-glass="action" ref={rangeTrigger} type="button" onClick={handleReselect} className="flex min-h-11 min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-xl border border-border px-1.5 py-2.5 text-xs font-semibold hover:bg-bg-secondary sm:text-sm"><ScanLine size={16} className="hidden shrink-0 sm:block" aria-hidden="true" />영역 재지정</button>
         </div>
@@ -234,9 +237,9 @@ export default function Result() {
               ? category === 'all' ? '카카오맵의 18개 분류 중 일부를 무작위로 조회해 범위 안의 장소를 뽑습니다. 실제 영업·출입 여부는 방문 전에 확인해주세요.' : `카카오맵에 ${categoryLabels[category]} 분류로 등록된 곳에서 뽑습니다. 실제 영업·출입 여부는 방문 전에 확인해주세요.`
               : '선택 범위와 카테고리에 맞게 지도에 등록된 장소를 추천합니다. 실제 출입 가능 여부는 방문 전에 확인해주세요.'}</p>
           </>}
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs font-semibold">
-            <Link to="/gallery" className="flex min-h-11 items-center">방문 기록 보기</Link>
-          </div>
+          <Link data-glass="action" to="/gallery" className="relative flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-border bg-bg-secondary px-3 py-2.5 text-sm font-semibold shadow-sm hover:bg-border/60">
+            <History size={16} aria-hidden="true" />방문 기록 보기
+          </Link>
         </div>
         <p role="status" className={notice ? 'mt-3 text-xs leading-relaxed text-teal-800 [overflow-wrap:anywhere]' : 'sr-only'}>{notice}</p>
       </section>

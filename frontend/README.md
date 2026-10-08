@@ -71,6 +71,8 @@ VITE_KAKAO_MAP_APP_KEY=발급받은_JavaScript_키
 
 카카오맵·Google Maps를 제공하며 Apple 기기에서는 Apple Maps도 표시합니다. 지도 앱 링크는 새 창으로 열고 팝업을 닫습니다.
 
+결과 화면과 공유 화면의 `카카오맵에서 확인`은 해당 장소의 상세 페이지를 새 창으로 엽니다. 카카오 응답의 장소 ID와 이름을 추첨 결과·결과 URL·공유 URL에 유지합니다. 상세 URL은 검증된 숫자 ID로 카카오 도메인 안에서만 생성합니다. 길찾기는 추첨된 장소명과 좌표를 전달하여 건물 안 가게도 해당 상호명으로 표시합니다. 장소 ID가 없는 기존 링크는 전체 장소명·주소로 카카오맵 검색을 열고, 별도 이름이 없으면 주소를 길찾기 도착지 이름으로 사용합니다. 카테고리 변경·영역 재지정 시 이전 장소 정보도 제거합니다. 링크 형식은 [카카오 공식 가이드](https://apis.map.kakao.com/web/guide/)를 따릅니다.
+
 ## 사이트 아이콘
 
 [public/favicon.svg](public/favicon.svg)는 [Project Portal](https://github.com/sonic240612/projects-portal)의 `assets/project-icons/whereto.svg`와 동일한 아이콘입니다. 주황색 그라데이션 바탕에 흰색 위치 핀과 점선 경로를 사용합니다.

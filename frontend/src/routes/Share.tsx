@@ -1,11 +1,13 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ChevronUp, Ellipsis } from 'lucide-react'
+import { ChevronDown, Ellipsis } from 'lucide-react'
 import MapView from '../components/MapView'
 import NavLinks from '../components/NavLinks'
+import KakaoPlaceLink from '../components/KakaoPlaceLink'
 import ResultPin from '../components/ResultPin'
 import { addressAt } from '../lib/geocode'
 import { parseLatLng } from '../lib/validation'
+import { readPlaceMetadata } from '../lib/place-metadata'
 
 export default function Share() {
   const [params] = useSearchParams()
@@ -21,6 +23,7 @@ export default function Share() {
   const dockRef = useRef<HTMLElement>(null)
   const moreId = useId()
   const isValid = Boolean(point && validAddress)
+  const place = point ? { ...point, address, ...readPlaceMetadata(params) } : null
 
   useEffect(() => {
     const dock = dockRef.current
@@ -51,7 +54,7 @@ export default function Share() {
     return () => { clearTimeout(timer); controller.abort() }
   }, [point, suppliedAddress, validAddress, retry])
 
-  if (!point || !validAddress) return (
+  if (!point || !place || !validAddress) return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-4 p-6 text-center">
       <h1 className="text-xl font-bold">잘못된 공유 링크입니다</h1>
       <p>올바른 위도·경도와 주소가 포함된 링크를 확인해주세요.</p>
@@ -66,13 +69,14 @@ export default function Share() {
         <div className="flex items-start gap-2">
           <ResultPin label="공유된 장소" address={address || (error ? '주소를 확인할 수 없습니다.' : '주소를 불러오는 중…')} expanded={expanded} />
           <button data-glass="action" type="button" aria-expanded={expanded} aria-controls={moreId} aria-label={expanded ? '장소 더보기 접기' : '장소 더보기'} onClick={() => setExpanded(value => !value)} className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-xl text-text-light hover:bg-bg-secondary">
-            {expanded ? <ChevronUp size={20} aria-hidden="true" /> : <Ellipsis size={22} aria-hidden="true" />}
+            {expanded ? <ChevronDown size={20} aria-hidden="true" /> : <Ellipsis size={22} aria-hidden="true" />}
           </button>
         </div>
         {error && <div role="alert" className="mt-2 rounded-xl bg-red-50 p-3 text-sm text-red-800 [overflow-wrap:anywhere]">{error}<button data-glass="action" type="button" className="ml-3 min-h-11 font-semibold underline" onClick={() => setRetry(value => value + 1)}>재시도</button></div>}
         <div className="mt-3 grid grid-cols-2 items-end gap-2">
-          <NavLinks lat={point.lat} lng={point.lng} />
-          <Link data-glass="action" to="/" className="flex min-h-11 min-w-0 items-center justify-center rounded-xl border border-border px-3 py-2.5 text-center text-sm font-semibold">나도 뽑으러 가기</Link>
+          <KakaoPlaceLink place={place} compact />
+          <NavLinks {...place} compact />
+          <Link data-glass="action" to="/" className="col-span-2 flex min-h-11 min-w-0 items-center justify-center rounded-xl border border-border px-3 py-2.5 text-center text-sm font-semibold">나도 뽑으러 가기</Link>
         </div>
         <div id={moreId} hidden={!expanded} className="mt-3 space-y-2 border-t border-border pt-3">
           <p className="text-xs text-text-light [overflow-wrap:anywhere]">좌표 {point.lat.toFixed(6)}, {point.lng.toFixed(6)}</p>

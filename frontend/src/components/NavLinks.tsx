@@ -1,18 +1,17 @@
 import { useId, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Navigation, ArrowUpRight, Map, Globe, Apple, X } from 'lucide-react'
-import { navigationApps } from '../lib/deeplink'
+import { getDestinationName, navigationApps } from '../lib/deeplink'
 import useDialog from '../hooks/useDialog'
+import type { CoordResult } from '../types'
 
-interface NavLinksProps {
-  lat: number
-  lng: number
+interface NavLinksProps extends CoordResult {
   compact?: boolean
 }
 
 const appIcons: Record<string, typeof Map> = { google: Globe, apple: Apple }
 
-function NavigationDialog({ lat, lng, id, onClose }: NavLinksProps & { id: string; onClose: () => void }) {
+function NavigationDialog({ id, onClose, ...place }: NavLinksProps & { id: string; onClose: () => void }) {
   const dialogRef = useDialog(onClose)
   const available = navigationApps.filter(app => app.id !== 'apple' || /iPad|iPhone|iPod|Mac/.test(navigator.userAgent))
 
@@ -31,7 +30,7 @@ function NavigationDialog({ lat, lng, id, onClose }: NavLinksProps & { id: strin
           <nav aria-label="길찾기 앱 선택" className="space-y-3">
             {available.map(app => {
               const Icon = appIcons[app.id] || Map
-              return <a key={app.id} data-glass="action" data-glass-tone={app.id === 'kakao' ? 'accent' : undefined} href={app.getUrl(lat, lng)} target="_blank" rel="noopener noreferrer" onClick={onClose} className="relative flex min-h-14 w-full items-center gap-3 rounded-2xl border border-border bg-bg-secondary px-4 py-3 text-sm font-semibold hover:bg-border/60">
+              return <a key={app.id} data-glass="action" data-glass-tone={app.id === 'kakao' ? 'accent' : undefined} href={app.getUrl(place.lat, place.lng, getDestinationName(place))} target="_blank" rel="noopener noreferrer" onClick={onClose} className="relative flex min-h-14 w-full items-center gap-3 rounded-2xl border border-border bg-bg-secondary px-4 py-3 text-sm font-semibold hover:bg-border/60">
                 <Icon size={20} className="shrink-0" aria-hidden="true" />
                 <span className="min-w-0 flex-1 break-words">{app.name}</span>
                 <ArrowUpRight size={18} className="shrink-0" aria-hidden="true" />
@@ -46,7 +45,7 @@ function NavigationDialog({ lat, lng, id, onClose }: NavLinksProps & { id: strin
   )
 }
 
-export default function NavLinks({ lat, lng, compact = false }: NavLinksProps) {
+export default function NavLinks({ compact = false, ...place }: NavLinksProps) {
   const [open, setOpen] = useState(false)
   const id = useId()
   return <>
@@ -54,6 +53,6 @@ export default function NavLinks({ lat, lng, compact = false }: NavLinksProps) {
       <Navigation size={17} className={compact ? 'hidden shrink-0 sm:block' : 'shrink-0'} aria-hidden="true" />
       길찾기
     </button>
-    {open && <NavigationDialog lat={lat} lng={lng} id={id} onClose={() => setOpen(false)} />}
+    {open && <NavigationDialog {...place} id={id} onClose={() => setOpen(false)} />}
   </>
 }
