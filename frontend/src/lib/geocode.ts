@@ -35,6 +35,7 @@ const kakaoClient = createKakaoPlacesClient({
 const client = usesKakaoMaps ? kakaoClient : photon
 export const reverseGeocode = client.reverse
 export const searchKakaoRegion = kakaoClient.searchRegion
+export const searchKakaoRegionPage = kakaoClient.searchRegionPage
 export const searchPlaces = client.search
 export async function addressAt(lat: number, lng: number, signal?: AbortSignal): Promise<string | null> {
   if (usesKakaoMaps) return kakaoClient.addressAt(lat, lng, signal)

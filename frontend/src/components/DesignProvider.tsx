@@ -3,11 +3,13 @@ import { DesignContext } from '../hooks/useDesignTheme'
 import { DESIGN_STORAGE_KEY, GLASS_TINT_STORAGE_KEY, GLASS_MOTION_STORAGE_KEY, normalizeGlassTint, parseDesignTheme, parseGlassTint, parseGlassMotion, readDesignTheme, readGlassTint, readGlassMotion, type GlassMotion } from '../lib/design'
 import LiquidGlassFilters from './LiquidGlassFilters'
 import LiquidGlassMotion from './LiquidGlassMotion'
+import { DRAW_MODE_STORAGE_KEY, parseDrawMode, readDrawMode, type DrawMode } from '../lib/draw-mode'
 
 export default function DesignProvider({ children }: { children: ReactNode }) {
   const [design, setDesign] = useState(readDesignTheme)
   const [glassTint, setTint] = useState(readGlassTint)
   const [glassMotion, setMotion] = useState(readGlassMotion)
+  const [drawMode, setMode] = useState(readDrawMode)
   useLayoutEffect(() => { document.documentElement.dataset.design = design }, [design])
   useLayoutEffect(() => {
     document.documentElement.style.setProperty('--glass-tint-strength', String(glassTint / 50))
@@ -18,6 +20,7 @@ export default function DesignProvider({ children }: { children: ReactNode }) {
       if (event.key === DESIGN_STORAGE_KEY || event.key === null) setDesign(parseDesignTheme(event.newValue))
       if (event.key === GLASS_TINT_STORAGE_KEY || event.key === null) setTint(parseGlassTint(event.newValue))
       if (event.key === GLASS_MOTION_STORAGE_KEY || event.key === null) setMotion(parseGlassMotion(event.newValue))
+      if (event.key === DRAW_MODE_STORAGE_KEY || event.key === null) setMode(parseDrawMode(event.newValue))
     }
     window.addEventListener('storage', sync)
     return () => window.removeEventListener('storage', sync)
@@ -39,7 +42,12 @@ export default function DesignProvider({ children }: { children: ReactNode }) {
     setMotion(next)
     try { localStorage.setItem(GLASS_MOTION_STORAGE_KEY, next) } catch { /* Interaction works even when storage is unavailable. */ }
   }, [])
-  const value = useMemo(() => ({ design, toggleDesign, glassTint, setGlassTint, glassMotion, setGlassMotion }), [design, toggleDesign, glassTint, setGlassTint, glassMotion, setGlassMotion])
+  const setDrawMode = useCallback((value: DrawMode) => {
+    const next = parseDrawMode(value)
+    setMode(next)
+    try { localStorage.setItem(DRAW_MODE_STORAGE_KEY, next) } catch { /* The selection still works without persistent storage. */ }
+  }, [])
+  const value = useMemo(() => ({ design, toggleDesign, glassTint, setGlassTint, glassMotion, setGlassMotion, drawMode, setDrawMode }), [design, toggleDesign, glassTint, setGlassTint, glassMotion, setGlassMotion, drawMode, setDrawMode])
   return <DesignContext.Provider value={value}>
     {children}
     <LiquidGlassFilters enabled={design === 'liquid'} />

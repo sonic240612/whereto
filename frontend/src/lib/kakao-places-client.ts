@@ -156,18 +156,23 @@ export function createKakaoPlacesClient(options: KakaoPlacesOptions) {
     return abortable(operation, signal)
   }
 
+  async function searchRegionPage(bounds: RectBounds, code: KakaoDestinationCode, page: number, signal?: AbortSignal) {
+    if (!isBounds(bounds) || !kakaoDestinationCategories.includes(code) || !Number.isInteger(page) || page < 1 || page > 3) {
+      throw new Error('탐색 범위가 올바르지 않습니다.')
+    }
+    const rect = [bounds.minLng, bounds.minLat, bounds.maxLng, bounds.maxLat].join(',')
+    const data = await request(`region:${code}:${rect}:${page}`, (services, callback) => {
+      // No center or radius: the rectangle is the complete geographic filter.
+      services.places.categorySearch(code, callback, { rect, size: 15, page })
+    }, signal)
+    signal?.throwIfAborted()
+    return { places: placeEntries(data, code).map(entry => entry.place), rawCount: data.length }
+  }
+
   return {
+    searchRegionPage,
     async searchRegion(bounds: RectBounds, code: KakaoDestinationCode, page: number, signal?: AbortSignal): Promise<PlaceCandidate[]> {
-      if (!isBounds(bounds) || !kakaoDestinationCategories.includes(code) || !Number.isInteger(page) || page < 1 || page > 3) {
-        throw new Error('탐색 범위가 올바르지 않습니다.')
-      }
-      const rect = [bounds.minLng, bounds.minLat, bounds.maxLng, bounds.maxLat].join(',')
-      const data = await request(`region:${code}:${rect}:${page}`, (services, callback) => {
-        // No center or radius: the rectangle is the complete geographic filter.
-        services.places.categorySearch(code, callback, { rect, size: 15, page })
-      }, signal)
-      signal?.throwIfAborted()
-      return placeEntries(data, code).map(entry => entry.place)
+      return (await searchRegionPage(bounds, code, page, signal)).places
     },
 
     async search(query: string, signal?: AbortSignal): Promise<PlaceCandidate[]> {

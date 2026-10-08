@@ -47,6 +47,19 @@ test('region searches use the whole rectangle without a radius and isolate categ
   assert.equal(calls, 4)
 })
 
+test('region page counts preserve rejected records so incomplete candidates cannot look complete', async () => {
+  const sdk = services()
+  sdk.places.categorySearch = (_code, callback) => callback([
+    restaurant, { ...restaurant, y: 'invalid' }, { ...restaurant, category_group_code: 'CE7' },
+  ], 'OK')
+  const client = createKakaoPlacesClient({ getServices: () => sdk, intervalMs: 0 })
+  const area = { minLat: 37, maxLat: 38, minLng: 126, maxLng: 128 }
+  const page = await client.searchRegionPage(area, 'FD6', 1)
+  assert.equal(page.rawCount, 3)
+  assert.equal(page.places.length, 1)
+  assert.deepEqual(await client.searchRegionPage(area, 'FD6', 1), page)
+})
+
 test('restaurant lookup uses only FD6 and preserves actual Kakao category and coordinates', async () => {
   const sdk = services()
   let calls = 0

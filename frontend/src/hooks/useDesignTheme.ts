@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { DesignTheme, GlassMotion } from '../lib/design'
+import type { DrawMode } from '../lib/draw-mode'
 
 export const DesignContext = createContext<{
   design: DesignTheme
@@ -8,6 +9,8 @@ export const DesignContext = createContext<{
   setGlassTint: (value: number) => void
   glassMotion: GlassMotion
   setGlassMotion: (value: GlassMotion) => void
+  drawMode: DrawMode
+  setDrawMode: (value: DrawMode) => void
 } | null>(null)
 
 export default function useDesignTheme() {

@@ -3,9 +3,10 @@ import { Droplets, PanelsTopLeft, RotateCcw, Settings2, Sparkles, X } from 'luci
 import { useLocation } from 'react-router-dom'
 import useDesignTheme from '../hooks/useDesignTheme'
 import { DEFAULT_GLASS_TINT } from '../lib/design'
+import { drawModeLabels, type DrawMode } from '../lib/draw-mode'
 
 export default function DesignSettings({ className = 'fixed right-3 top-[calc(env(safe-area-inset-top)+8px)] z-30' }: { className?: string }) {
-  const { design, toggleDesign, glassTint, setGlassTint, glassMotion, setGlassMotion } = useDesignTheme()
+  const { design, toggleDesign, glassTint, setGlassTint, glassMotion, setGlassMotion, drawMode, setDrawMode } = useDesignTheme()
   const { key: routeKey } = useLocation()
   const [openOn, setOpenOn] = useState<string | null>(null)
   const open = openOn === routeKey
@@ -41,14 +42,26 @@ export default function DesignSettings({ className = 'fixed right-3 top-[calc(en
 
   const close = () => { setOpenOn(null); triggerRef.current?.focus() }
   return <>
-    <button ref={triggerRef} type="button" data-glass="toggle" aria-label={open ? '디자인 설정 닫기' : '디자인 설정 열기'} aria-expanded={open} aria-controls={open ? `${id}-panel` : undefined} aria-haspopup="dialog" onClick={() => setOpenOn(open ? null : routeKey)} title="디자인 설정" className={`pointer-events-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/80 bg-white/95 text-text shadow-md backdrop-blur transition-colors hover:bg-bg-secondary ${className}`}>
+    <button ref={triggerRef} type="button" data-glass="toggle" aria-label={open ? '설정 닫기' : '설정 열기'} aria-expanded={open} aria-controls={open ? `${id}-panel` : undefined} aria-haspopup="dialog" onClick={() => setOpenOn(open ? null : routeKey)} title="설정" className={`pointer-events-auto flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/80 bg-white/95 text-text shadow-md backdrop-blur transition-colors hover:bg-bg-secondary ${className}`}>
       <Settings2 size={20} aria-hidden="true" />
     </button>
     {open && <div ref={panelRef} id={`${id}-panel`} role="dialog" aria-labelledby={`${id}-title`} data-glass="panel" data-design-settings-panel className="pointer-events-auto fixed right-3 top-[calc(env(safe-area-inset-top)+60px)] z-50 max-h-[calc(100dvh-env(safe-area-inset-top)-84px)] w-[min(320px,calc(100vw-24px))] overflow-y-auto rounded-2xl border border-white/80 bg-white/95 p-4 text-text shadow-xl backdrop-blur">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 id={`${id}-title`} className="text-base font-bold">디자인 설정</h2>
+        <h2 id={`${id}-title`} className="text-base font-bold">설정</h2>
         <button type="button" data-glass="action" aria-label="설정 창 닫기" onClick={close} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-bg-secondary"><X size={18} aria-hidden="true" /></button>
       </div>
+      <fieldset className="mb-5 border-b border-border/60 pb-4" aria-describedby={`${id}-draw-hint`}>
+        <legend className="mb-2 text-sm font-semibold">추첨 방식</legend>
+        <div className="grid grid-cols-2 gap-2">
+          {(['popular', 'complete'] as DrawMode[]).map(mode => <label key={mode} data-glass="action" data-glass-tone={drawMode === mode ? 'accent' : undefined} className={`relative flex min-h-11 cursor-pointer items-center justify-center rounded-xl border px-2 py-2 text-center text-sm font-semibold focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary-dark ${drawMode === mode ? 'border-teal-600 bg-teal-100/70' : 'border-border bg-bg-secondary'}`}>
+            <input type="radio" name={`${id}-draw-mode`} value={mode} checked={drawMode === mode} onChange={() => setDrawMode(mode)} className="sr-only" />
+            {drawModeLabels[mode]}
+          </label>)}
+        </div>
+        <p id={`${id}-draw-hint`} className="mt-2 text-xs leading-relaxed text-text-light">{drawMode === 'complete'
+          ? '영역 안에서 위치를 무작위로 고른 뒤 주변 장소 중 하나를 뽑아요. 장소가 없으면 다른 위치에서 다시 찾아요. 모든 장소의 당첨 확률이 같지는 않아요.'
+          : '카카오 검색 상위 후보에서 빠르게 뽑아요. 실제 인기 순위를 뜻하지는 않아요.'}</p>
+      </fieldset>
       <button type="button" data-glass="action" data-glass-tone="accent" aria-label={liquid ? '클래식 디자인으로 전환' : 'Liquid Glass 디자인으로 전환'} aria-pressed={liquid} onClick={toggleDesign} className="mb-5 flex min-h-11 w-full items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm font-semibold">
         {liquid ? <Droplets size={18} aria-hidden="true" /> : <PanelsTopLeft size={18} aria-hidden="true" />}
         <span>{liquid ? 'Liquid Glass' : '클래식'}</span>
